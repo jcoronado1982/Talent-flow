@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.log
+
+# Project Reports & Data
+reports/
+*.xlsx
+job_report.csv
+user_data/
+user_data_auth/
+
+# Configuration & Secrets
+config/credentials.yaml
+.env
+
+# Dashboard specific
+dashboard/status.json
+dashboard/stop.signal
+dashboard/server.log
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store

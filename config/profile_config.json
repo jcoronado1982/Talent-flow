@@ -1,0 +1,351 @@
+{
+  "english_level": "B2",
+  "years_of_experience": 20,
+  "open_to_relocation": true,
+  "target_roles": [
+    "Technical Lead",
+    "Líder Técnico",
+    "Tech Lead",
+    "Lead Software Engineer",
+    "Staff Engineer",
+    "Software Architect",
+    "Arquitecto de Software",
+    "Senior Developer",
+    "Desarrollador Senior",
+    "Full Stack Developer",
+    "Desarrollador Full Stack",
+    "Backend Developer",
+    "Desarrollador Backend",
+    "Frontend Developer",
+    "Desarrollador Frontend",
+    "AI Engineer",
+    "Ingeniero de IA",
+    "Machine Learning Engineer"
+  ],
+  "location_preferences": [
+    "Medellín",
+    "Bogotá",
+    "Venezuela",
+    "Remote",
+    "Colombia (Remote Only)"
+  ],
+  "location_rules": {
+    "remote_allowlist": [
+      "Anywhere",
+      "Colombia",
+      "Latam",
+      "Venezuela"
+    ],
+    "hybrid_allowlist": [
+      "Bogotá",
+      "Medellín",
+      "Venezuela"
+    ],
+    "onsite_allowlist": [
+      "Bogotá",
+      "Medellín",
+      "Venezuela"
+    ]
+  },
+  "stack_priority": [
+    [
+      "C#",
+      ".NET Core",
+      "ASP.NET",
+      "SQL Server",
+      "Angular",
+      "React",
+      "TypeScript",
+      "JavaScript"
+    ],
+    [
+      "Python",
+      "Django",
+      "Flask",
+      "FastAPI",
+      "AI Integration",
+      "LLMs",
+      "PyTorch",
+      "TensorFlow"
+    ],
+    [
+      "Java",
+      "Spring Boot",
+      "Spring"
+    ]
+  ],
+  "skills": {
+    "Backend": {
+      "C#": {
+        "level": 90,
+        "years": 10
+      },
+      ".NET Core": {
+        "level": 90,
+        "years": 10
+      },
+      "ASP.NET": {
+        "level": 90,
+        "years": 10
+      },
+      "Java": {
+        "level": 50,
+        "years": 5
+      },
+      "Spring Boot": {
+        "level": 50,
+        "years": 5
+      },
+      "Python": {
+        "level": 60,
+        "years": 5
+      },
+      "Django": {
+        "level": 60,
+        "years": 5
+      },
+      "FastAPI": {
+        "level": 60,
+        "years": 5
+      },
+      "Flask": {
+        "level": 60,
+        "years": 2
+      },
+      "PHP": {
+        "level": 70,
+        "years": 9
+      },
+      "Visual Basic": {
+        "level": 70,
+        "years": 10
+      },
+      "SugarCRM": {
+        "level": 50,
+        "years": 3
+      },
+      "Rust": {
+        "level": 10,
+        "years": 1
+      },
+      "C++": {
+        "level": 10,
+        "years": 1
+      }
+    },
+    "Frontend": {
+      "Angular": {
+        "level": 100,
+        "years": 11
+      },
+      "React": {
+        "level": 70,
+        "years": 5
+      },
+      "Ionic": {
+        "level": 90,
+        "years": 5
+      },
+      "TypeScript": {
+        "level": 100,
+        "years": 10
+      },
+      "JavaScript": {
+        "level": 100,
+        "years": 20
+      },
+      "HTML": {
+        "level": 100,
+        "years": 20
+      },
+      "JQuery": {
+        "level": 95,
+        "years": 10
+      }
+    },
+    "Mobile": {
+      "React Native": {
+        "level": 70,
+        "years": 3
+      },
+      "Android": {
+        "level": 60,
+        "years": 4
+      },
+      "Java Mobile": {
+        "level": 80,
+        "years": 4
+      }
+    },
+    "AI_Data_Science": {
+      "Python": {
+        "level": 50,
+        "years": 5
+      },
+      "Pandas": {
+        "level": 20,
+        "years": 2
+      },
+      "AI Integration": {
+        "level": 95,
+        "years": 2
+      },
+      "Cloud AI (Vertex AI/Voice/Audio)": {
+        "level": 95,
+        "years": 2
+      },
+      "LLMs": {
+        "level": 95,
+        "years": 2
+      },
+      "Local LLMs (Running/Fine-tuning)": {
+        "level": 90,
+        "years": 2
+      },
+      "Open Source Models Training": {
+        "level": 90,
+        "years": 2
+      },
+      "Local Model Optimization": {
+        "level": 90,
+        "years": 2
+      },
+      "AI Coding Tools (Cursor/Antigravity)": {
+        "level": 100,
+        "years": 1
+      },
+      "PyTorch": {
+        "level": 60,
+        "years": 2
+      },
+      "TensorFlow": {
+        "level": 30,
+        "years": 1
+      },
+      "Google Vertex AI": {
+        "level": 90,
+        "years": 1
+      },
+      "N8N": {
+        "level": 90,
+        "years": 1
+      },
+      "CUDA": {
+        "level": 75,
+        "years": 1
+      }
+    },
+    "Databases": {
+      "SQL Server": {
+        "level": 100,
+        "years": 15
+      },
+      "T-SQL": {
+        "level": 80,
+        "years": 10
+      },
+      "PostgreSQL": {
+        "level": 90,
+        "years": 5
+      },
+      "MySQL": {
+        "level": 90,
+        "years": 10
+      },
+      "MariaDB": {
+        "level": 80,
+        "years": 5
+      },
+      "MongoDB": {
+        "level": 85,
+        "years": 4
+      },
+      "Vector DB": {
+        "level": 20,
+        "years": 1
+      }
+    },
+    "DevOps_Cloud": {
+      "Git": {
+        "level": 100,
+        "years": 11
+      },
+      "Docker": {
+        "level": 90,
+        "years": 5
+      },
+      "Kubernetes": {
+        "level": 80,
+        "years": 3
+      },
+      "AWS": {
+        "level": 50,
+        "years": 2
+      },
+      "Azure": {
+        "level": 50,
+        "years": 2
+      },
+      "GCP": {
+        "level": 90,
+        "years": 6
+      },
+      "Terraform": {
+        "level": 60,
+        "years": 2
+      }
+    },
+    "Operating_Systems": {
+      "Linux": {
+        "level": 80,
+        "years": 10
+      },
+      "Windows": {
+        "level": 100,
+        "years": 20
+      }
+    },
+    "Soft_Skills": {
+      "Problem Solving": {
+        "level": 100,
+        "years": 20
+      },
+      "Stress Management": {
+        "level": 100,
+        "years": 20
+      },
+      "Easily Adaptable": {
+        "level": 100,
+        "years": 20
+      },
+      "Adaptación": {
+        "level": 100,
+        "years": 20
+      },
+      "Driving Results": {
+        "level": 100,
+        "years": 20
+      },
+      "Teamwork": {
+        "level": 100,
+        "years": 20
+      },
+      "Resiliencia": {
+        "level": 100,
+        "years": 20
+      },
+      "Leadership": {
+        "level": 100,
+        "years": 5
+      },
+      "Mentoring": {
+        "level": 100,
+        "years": 10
+      },
+      "Technical Architecture": {
+        "level": 100,
+        "years": 8
+      }
+    }
+  }
+}

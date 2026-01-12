@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <style>
+        :root {
+            --primary: #8E44AD;
+            --secondary: #2C3E50;
+            --accent: #E67E22;
+            --bg: #121212;
+            --card-bg: #1E1E1E;
+            --text: #F0F0F0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: var(--primary);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid var(--accent);
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        /* Progress Sections */
+        .section {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            background: #333;
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            background: var(--primary);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        /* Matches */
+        .matches-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .match-item {
+            background: #252525;
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .match-score {
+            font-weight: bold;
+            color: #27AE60;
+        }
+
+        /* Logs */
+        .console {
+            background: #000;
+            color: #0F0;
+            font-family: monospace;
+            padding: 15px;
+            border-radius: 5px;
+            height: 200px;
+            overflow-y: auto;
+            font-size: 0.9em;
+        }
+
+        .btn-stop {
+            background-color: #C0392B;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1em;
+            transition: background 0.3s;
+        }
+
+        .btn-stop:hover {
+            background-color: #E74C3C;
+        }
+
+        .btn-stop:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>🤖 Dashboard</h1>
+            <button id="stopBtn" class="btn-stop" onclick="stopSearch()">🛑 Detener Búsqueda</button>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalMatches">0</div>
+                <div class="stat-label">Coincidencias (>30%)</div>
+            </div>
+            <div class="stat-card" style="border-color: var(--primary);">
+                <div class="stat-value" id="currentRole">---</div>
+                <div class="stat-label">Rol Actual</div>
+            </div>
+            <div class="stat-card" style="border-color: #3498DB;">
+                <div class="stat-value" id="currentLocation">---</div>
+                <div class="stat-label">Ubicación Actual</div>
+            </div>
+        </div>
+
+        <!-- Global Progress -->
+        <div class="section">
+            <div class="section-header">
+                <span>Progreso Total (Búsquedas)</span>
+                <span id="globalProgressText">0/0</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="globalProgressBar"></div>
+            </div>
+        </div>
+
+        <!-- Current Batch Progress -->
+        <div class="section">
+            <div class="section-header">
+                <span>Lote Actual (Ofertas)</span>
+                <span id="batchProgressText">Iniciando...</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="batchProgressBar" style="background: var(--accent);"></div>
+            </div>
+        </div>
+
+        <!-- Recent Matches -->
+        <div class="section">
+            <h3>🔥 Últimas Coincidencias</h3>
+            <div class="matches-list" id="matchesList">
+                <div class="match-item">Esperando datos...</div>
+            </div>
+        </div>
+
+        <!-- Console -->
+        <div class="section">
+            <h3>🖥️ Log de Actividad</h3>
+            <div class="console" id="consoleLog">
+                > Esperando conexión con monitor...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function stopSearch() {
+            const btn = document.getElementById('stopBtn');
+            if (!confirm("¿Seguro que deseas detener la búsqueda? Se guardará el reporte actual.")) return;
+
+            btn.disabled = true;
+            btn.innerText = "Deteniendo...";
+
+            try {
+                await fetch('/stop', { method: 'POST' });
+                alert("Se ha enviado la señal de parada. El bot terminará la acción actual y guardará el reporte.");
+            } catch (e) {
+                alert("Error al enviar señal: " + e);
+                btn.disabled = false;
+                btn.innerText = "🛑 Detener Búsqueda";
+            }
+        }
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch('status.json?t=' + Date.now());
+                const data = await response.json();
+
+                // Stats
+                document.getElementById('totalMatches').innerText = data.total_matches;
+                document.getElementById('currentRole').innerText = data.current_role;
+                document.getElementById('currentLocation').innerText = data.current_location;
+
+                // Global Progress
+                const globalPct = (data.current_combination_index / Math.max(data.total_combinations, 1)) * 100;
+                document.getElementById('globalProgressBar').style.width = globalPct + '%';
+                document.getElementById('globalProgressText').innerText =
+                    `${data.current_combination_index} / ${data.total_combinations}`;
+
+                // Batch Progress
+                const batchPct = (data.current_job_index / Math.max(data.jobs_in_current_batch, 1)) * 100;
+                document.getElementById('batchProgressBar').style.width = batchPct + '%';
+                document.getElementById('batchProgressText').innerText =
+                    data.jobs_in_current_batch > 0 ? `Oferta ${data.current_job_index} de ${data.jobs_in_current_batch}` : "Escaneando...";
+
+                // Matches
+                const matchesList = document.getElementById('matchesList');
+                if (data.recent_matches.length > 0) {
+                    matchesList.innerHTML = data.recent_matches.map(m => `
+                        <div class="match-item">
+                            <div>
+                                <strong>${m.company}</strong> (${m.location})<br>
+                                <small>${m.role || 'Unknown'}</small> • <small style="color: #F1C40F;">${m.date || 'Unknown'}</small><br>
+                                <small>${m.work_mode}</small>
+                            </div>
+                            <div class="match-score">${m.score}% Match</div>
+                        </div>
+                    `).join('');
+                } else {
+                    matchesList.innerHTML = '<div class="match-item">Sin coincidencias recientes</div>';
+                }
+
+                // Logs
+                const consoleDiv = document.getElementById('consoleLog');
+                consoleDiv.innerHTML = data.logs.join('<br>> ');
+
+            } catch (e) {
+                console.log("Waiting for server...", e);
+            }
+        }
+
+        setInterval(updateDashboard, 1000);
+        updateDashboard();
+    </script>
+</body>
+
+</html>
