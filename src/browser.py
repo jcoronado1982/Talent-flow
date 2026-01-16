@@ -125,13 +125,14 @@ class JobSearchBrowser:
                 print("Login submitted.")
                 
                 # Manual 2FA Handling
-                print("\n" + "="*50)
-                print("⚠️  ATENCIÓN REQUERIDA ⚠️")
-                print("Si LinkedIn solicita un código de verificación (SMS/App) o Captcha:")
-                print("1. Resuélvelo manualmente en la ventana del navegador.")
-                print("2. Una vez estés en el Feed/Home, presiona ENTER aquí.")
-                print("="*50 + "\n")
-                input("Presiona ENTER para continuar...")
+                # Smart Wait: Detect Feed instead of asking user to press Enter
+                print("   [Login] Verificando acceso al Feed (Esperando 2FA si es necesario)...")
+                try:
+                    # Wait up to 60s for user to solve 2FA or for page to load
+                    self.page.wait_for_url("**/feed/**", timeout=60000)
+                    print("   ✅ [Login] Feed detectado. Continuando...")
+                except:
+                    print("   ⚠️ [Login] No se detectó el Feed en 60s. Continuando bajo riesgo...")
                 
                 # Check if we are logged in (optional, but good for stability)
                 # self.human_delay(3, 5) 
@@ -496,6 +497,89 @@ class JobSearchBrowser:
             print(f"Error during scan: {e}")
             
         return count_processed
+
+    def click_like_an_ai(self):
+        """
+        Simula la lógica de un Agente AI (como Perplexity):
+        1. Busca por Semántica (Accesibilidad) -> Lo que usan los ciegos (LinkedIn no puede cambiar esto).
+        2. Busca por Texto Visual.
+        3. Busca por Selectores CSS clásicos.
+        4. Inyección de JavaScript (Fuerza bruta).
+        Returns True if clicked, False otherwise.
+        """
+        print("\n   🤖 [Browser] Iniciando protocolo de clic inteligente...")
+
+        # PALABRAS CLAVE (Multilenguaje)
+        # Regex para capturar: "Solicitar", "Solicitud sencilla", "Apply", "Easy Apply"
+        pattern = re.compile(r"(solicitar|apply|sencilla|now)", re.IGNORECASE)
+
+        # ---------------------------------------------------------
+        # ESTRATEGIA 1: Semántica (Accessibility Tree) - LA MEJOR
+        # ---------------------------------------------------------
+        print("      1️⃣  Intentando búsqueda Semántica (Accessibility Role)...")
+        try:
+            # Busca un elemento que SEA un botón y que SE LLAME como el patrón
+            btn = self.page.get_by_role("button", name=pattern).first
+            
+            if btn.is_visible():
+                print(f"         ✨ ¡Encontrado! Texto: '{btn.text_content().strip()}'")
+                print("         🖱️  Haciendo clic semántico...")
+                btn.click(timeout=3000)
+                return True
+        except Exception as e:
+            print(f"         ⚠️  Semántica falló: {e}")
+
+        # ---------------------------------------------------------
+        # ESTRATEGIA 2: Texto Visual (Lo que ve el humano)
+        # ---------------------------------------------------------
+        print("      2️⃣  Intentando búsqueda por Texto Visual...")
+        try:
+            text_btn = self.page.get_by_text(pattern).first
+            if text_btn.is_visible():
+                print("         🖱️  Haciendo clic en texto...")
+                text_btn.click(force=True)
+                return True
+        except:
+            pass
+
+        # ---------------------------------------------------------
+        # ESTRATEGIA 3: Selectores CSS (Legacy / Backup)
+        # ---------------------------------------------------------
+        print("      3️⃣  Intentando Selectores CSS clásicos...")
+        selectors = [
+            ".jobs-apply-button",
+            ".jobs-s-apply button",
+            "button[aria-label*='Apply']",
+            ".jobs-apply-button--top-card button"
+        ]
+        for sel in selectors:
+            if self.page.is_visible(sel):
+                print(f"         🎯 Selector encontrado: {sel}")
+                self.page.locator(sel).first.click()
+                return True
+
+        # ---------------------------------------------------------
+        # ESTRATEGIA 4: Inyección JS (Opción Nuclear)
+        # ---------------------------------------------------------
+        print("      ☢️  Intentando Inyección Directa de JS (Bypass UI)...")
+        result = self.page.evaluate("""
+            () => {
+                const xpath = "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'apply') or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'solicitar')]";
+                const btn = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                if (btn) {
+                    btn.click();
+                    return true;
+                }
+                return false;
+            }
+        """)
+        
+        if result:
+            print("         ✅ JS Click ejecutado con éxito.")
+            return True
+
+        print("      ❌ [Browser] No se pudo hacer clic con ninguna estrategia.")
+        return False
 
     def create_google_sheet(self, report_data, google_email=None, google_password=None, output_filename=None):
         """Creates a local Excel report (and optionally uploads to Sheets)."""

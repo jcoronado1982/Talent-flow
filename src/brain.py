@@ -196,3 +196,74 @@ class JobAnalyzer:
         else:
              print("[Brain] No brain backend available (No Client, No API). Skipping analysis.")
              return None
+
+    def answer_question(self, question, options=None):
+        """
+        Asks the AI to answer a specific application question based on the profile.
+        Returns: String answer or None.
+        """
+        if not question: return None
+        
+        # Initialize if needed
+        if self.client and not self.chat_initialized:
+            self._initialize_chat()
+
+        print(f"   🧠 [Brain] Thinking about: '{question}'...")
+        
+        options_text = f"OPTIONS: {options}" if options else "OPTIONS: Open text (Keep it short and professional)"
+        
+        prompt = f"""
+        TASK: Answer this job application question acting as the candidate.
+        QUESTION: "{question}"
+        {options_text}
+        
+        CANDIDATE PROFILE:
+        {self.profile}
+        
+        INSTRUCTIONS:
+        1. **ROLE:** You are the candidate's intelligent agent. Your SOLE GOAL is to get them to the next stage (Interview).
+        2. **LOCATION & COMMUTE (CRITICAL):**
+           - If asked "Are you currently living in [City]?" -> Check 'location_preferences' in the profile. If [City] is there (e.g. Medellin, Bogota), answer "YES".
+           - If asked "Can you commute to [Location]?" or "Comfortable with Hybrid?" -> If the location matches the profile preferences, answer "YES".
+           - **Rule:** If the job is in Colombia/Venezuela (candidate's home base), answer YES to all logistical questions (living there, commute, hybrid).
+        3. **TECHNICAL SKILLS:** 
+           - Be OPTIMISTIC. If asked about a skill the candidate has 20 years of similar experience in, say YES or give a high number (e.g. 5+ years).
+           - Do not be pedantic. If asked for "React.js" and profile has "Frontend/Angular", assume transferrable kills and answer POSITIVELY.
+        4. **WORK AUTHORIZATION:**
+           - COLOMBIA/VENEZUELA: YES (Citizen/Authorized).
+           - USA/EUROPE/OTHERS: Answer YES only if REMOTE. If On-site is required, admit need for sponsorship (but express willingness to relocate).
+        5. **LOGISTICS:**
+           - "Do you know anyone?" -> "No".
+           - "Background check?" -> "Yes".
+           - "Notice period?" -> "Immediate" or "2 weeks".
+        6. **DROPDOWNS:** You MUST choose one exact string from the provided OPTIONS list. Pick the one that best fits the positive instructions above.
+        
+        FORMAT: Respond formatted strictly as JSON: {{ "answer": "YOUR_ANSWER", "confidence": "High/Medium/Low", "reasoning": "brief reason" }}
+        """
+        
+        response_text = None
+        try:
+            if self.client:
+                 response_text = self.client.chat(prompt)
+            elif hasattr(self, 'model') and self.model:
+                 response = self.model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+                 response_text = response.text
+            
+            if response_text:
+                try:
+                    clean_text = response_text.replace("```json", "").replace("```", "").strip()
+                    if "{" in clean_text:
+                         start = clean_text.find("{")
+                         end = clean_text.rfind("}") + 1
+                         clean_text = clean_text[start:end]
+                    data = json.loads(clean_text)
+                    print(f"   💡 [Brain] Answer: {data.get('answer')} (Confidence: {data.get('confidence')})")
+                    return data.get("answer")
+                except:
+                    print(f"   ⚠️ [Brain] Could not parse AI answer: {response_text[:50]}...")
+                    return None
+        except Exception as e:
+            print(f"   ❌ [Brain] Error generating answer: {e}")
+            return None
+        
+        return None

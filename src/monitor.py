@@ -21,6 +21,19 @@ class SearchMonitor:
             "status": "Ready",
             "last_updated": 0
         }
+        
+        # Load existing state if available to preserve "Running" status or logs
+        if os.path.exists(self.status_file):
+            try:
+                with open(self.status_file, "r") as f:
+                    data = json.load(f)
+                    # Preserve critical keys
+                    if data.get("status") == "Running":
+                        self.state["status"] = "Running"
+                    # self.state["logs"] = data.get("logs", []) # Don't load old logs, start fresh
+            except:
+                pass
+        
         self.save()
 
     def update(self, **kwargs):

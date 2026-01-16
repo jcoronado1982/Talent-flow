@@ -74,6 +74,251 @@
       "Spring"
     ]
   ],
+  "salary_expectations": {
+    "default": {
+      "value": "10000000",
+      "currency": "COP"
+    },
+    "rules": [
+      {
+        "role_match": "Full Stack",
+        "language": "es",
+        "value": "10000000"
+      },
+      {
+        "role_match": "Full Stack",
+        "language": "en",
+        "value": "3500"
+      },
+      {
+        "role_match": "Lead",
+        "language": "es",
+        "value": "12000000"
+      },
+      {
+        "role_match": "Lead",
+        "language": "en",
+        "value": "4000"
+      },
+      {
+        "role_match": "Senior",
+        "language": "es",
+        "value": "10000000"
+      },
+      {
+        "role_match": "Senior",
+        "language": "en",
+        "value": "3500"
+      }
+    ]
+  },
+  "resume_rules": [
+    {
+      "match_all": [
+        [
+          "java",
+          "spring",
+          "jvm"
+        ],
+        [
+          "lead",
+          "staff",
+          "principal",
+          "architect",
+          "arquitecto",
+          "líder",
+          "lider",
+          "manager",
+          "head"
+        ]
+      ],
+      "language": "es",
+      "file": "CV_L_J_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "match_all": [
+        [
+          "java",
+          "spring",
+          "jvm"
+        ],
+        [
+          "lead",
+          "staff",
+          "principal",
+          "architect",
+          "arquitecto",
+          "líder",
+          "lider",
+          "manager",
+          "head"
+        ]
+      ],
+      "language": "en",
+      "file": "CV_L_J_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "match_all": [
+        [
+          "c#",
+          ".net",
+          "dotnet",
+          "azure"
+        ],
+        [
+          "lead",
+          "staff",
+          "principal",
+          "architect",
+          "arquitecto",
+          "líder",
+          "lider",
+          "manager",
+          "head"
+        ]
+      ],
+      "language": "es",
+      "file": "CV_L_C_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "match_all": [
+        [
+          "c#",
+          ".net",
+          "dotnet",
+          "azure"
+        ],
+        [
+          "lead",
+          "staff",
+          "principal",
+          "architect",
+          "arquitecto",
+          "líder",
+          "lider",
+          "manager",
+          "head"
+        ]
+      ],
+      "language": "en",
+      "file": "CV_L_C_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "match_all": [
+        [
+          "python",
+          "django",
+          "flask",
+          "fastapi",
+          "ai",
+          "machine learning"
+        ],
+        [
+          "lead",
+          "staff",
+          "principal",
+          "architect",
+          "arquitecto",
+          "líder",
+          "lider",
+          "manager",
+          "head"
+        ]
+      ],
+      "language": "es",
+      "file": "CV_L_P_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "match_all": [
+        [
+          "python",
+          "django",
+          "flask",
+          "fastapi",
+          "ai",
+          "machine learning"
+        ],
+        [
+          "lead",
+          "staff",
+          "principal",
+          "architect",
+          "arquitecto",
+          "líder",
+          "lider",
+          "manager",
+          "head"
+        ]
+      ],
+      "language": "en",
+      "file": "CV_L_P_EN_Jesus_Coronado.pdf"
+    },
+    {
+      "keywords": [
+        "java",
+        "spring",
+        "jvm"
+      ],
+      "language": "es",
+      "file": "CV_D_J_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "keywords": [
+        "java",
+        "spring",
+        "jvm"
+      ],
+      "language": "en",
+      "file": "CV_D_J_EN_Jesus_Coronado.pdf"
+    },
+    {
+      "keywords": [
+        "c#",
+        ".net",
+        "dotnet",
+        "azure"
+      ],
+      "language": "es",
+      "file": "CV_D_C_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "keywords": [
+        "c#",
+        ".net",
+        "dotnet",
+        "azure"
+      ],
+      "language": "en",
+      "file": "CV_D_C_EN_Jesus_Coronado.pdf"
+    },
+    {
+      "keywords": [
+        "python",
+        "django",
+        "flask",
+        "fastapi",
+        "ai",
+        "machine learning",
+        "optimization",
+        "optimizador"
+      ],
+      "language": "es",
+      "file": "CV_D_P_ES_Jesus_Coronado.pdf"
+    },
+    {
+      "keywords": [
+        "python",
+        "django",
+        "flask",
+        "fastapi",
+        "ai",
+        "machine learning",
+        "optimization"
+      ],
+      "language": "en",
+      "file": "CV_D_P_EN_Jesus_Coronado.pdf"
+    }
+  ],
   "skills": {
     "Backend": {
       "C#": {

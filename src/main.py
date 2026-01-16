@@ -30,19 +30,22 @@ def main():
         print(f"Error loading configuration: {e}")
         return
 
-    # Initialize components
-    browser = JobSearchBrowser(headless=False) # Headful for demo/debugging
-    brain = JobAnalyzer(api_key=api_key)
-    
-    # Initialize Monitor
+    # Initialize Monitor FIRST for immediate feedback
     from src.monitor import SearchMonitor
     monitor = SearchMonitor()
-    monitor.log("Inicializando sistema...")
+    monitor.log("⚙️ Inicializando proceso...")
     
     # Clean up stale signals
     try: os.remove("dashboard/stop.signal")
     except: pass
     
+    # Initialize components
+    monitor.log("🌐 Abriendo navegador...")
+    browser = JobSearchBrowser(headless=False) # Headful for demo/debugging
+    brain = JobAnalyzer(api_key=api_key)
+    
+    monitor.log("🔑 Verificando credenciales...")
+
     report_data = []
 
     try:
@@ -54,11 +57,11 @@ def main():
         password = credentials.get(site, {}).get("password")
         
         if email and "CHANGE_ME" not in email:
-            monitor.log("Iniciando sesión en LinkedIn...")
+            monitor.log("👤 Iniciando sesión en LinkedIn...")
             browser.login(site, email, password)
         else:
             print("Warning: LinkedIn credentials missing.")
-            monitor.log("Warning: Credenciales no configuradas. Esperando login manual...")
+            monitor.log("⚠️ Credenciales no configuradas.")
             input("Press Enter in terminal if you need to log in manually...")
 
         # Load profile config
@@ -191,17 +194,31 @@ def main():
                     continue
         
         # Final Save
+        # Final Save Logic - EXECUTED ALWAYS IF DATA EXISTS
         if report_data:
+            monitor.log("💾 Generando reporte FINAL...")
             final_name = report_file.replace("RUNNING", "FINAL")
-            monitor.log("🏁 Búsqueda finalizada.")
+            
+            # Create (or Overwrite) the final file with all data
             browser.create_google_sheet(report_data, output_filename=final_name)
-            browser.close()
+            
+            monitor.log(f"🏁 Reporte guardado: {final_name}")
+            monitor.update(status="Stopped")
+            
+            # Optional: Clean up the RUNNING file if it exists to avoid duplicates
+            if os.path.exists(report_file):
+                try: os.remove(report_file)
+                except: pass
+        else:
+            monitor.log("🏁 Finalizado sin ofertas para reporte.")
+            monitor.update(status="Stopped")
 
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
-        # browser.close() # Don't close immediately so user can see the Sheet
-        print("Browser session left open for review.")
+        if 'browser' in locals():
+            browser.close()
+        print("Browser session closed.")
 
     
     # Legacy report block removed (Integrated into loop)

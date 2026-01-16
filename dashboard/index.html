@@ -117,7 +117,7 @@
             border-radius: 5px;
             height: 200px;
             overflow-y: auto;
-            font-size: 0.9em;
+            font-size: 1.3em;
         }
 
         .btn-stop {
@@ -141,13 +141,43 @@
             cursor: not-allowed;
         }
     </style>
+    <style>
+        :root {
+            --primary: #8E44AD;
+            --success: #27ae60;
+            --danger: #c0392b;
+            --dark: #121212;
+            --light: #ecf0f1;
+        }
+
+        /* ... existing styles ... */
+        .btn-apply {
+            background-color: var(--success);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            /* Hidden by default */
+            margin-right: 10px;
+        }
+
+        .btn-apply:hover {
+            background-color: #2ecc71;
+        }
+    </style>
 </head>
 
 <body>
     <div class="container">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h1>🤖 Dashboard</h1>
-            <button id="stopBtn" class="btn-stop" onclick="stopSearch()">🛑 Detener Búsqueda</button>
+            <div>
+                <button id="searchBtn" class="btn-apply" onclick="startSearchProcess()">🚀 Iniciar Búsqueda</button>
+                <button id="applyBtn" class="btn-apply" onclick="startAutoApply()" style="background-color: #2980B9;">📄
+                    Auto Aplicar</button>
+            </div>
         </div>
 
         <!-- Stats -->
@@ -206,27 +236,119 @@
     </div>
 
     <script>
-        async function stopSearch() {
-            const btn = document.getElementById('stopBtn');
-            if (!confirm("¿Seguro que deseas detener la búsqueda? Se guardará el reporte actual.")) return;
+        let isActionPending = false;
 
+        async function startSearchProcess() {
+            if (isActionPending) return;
+            if (!confirm("¿Iniciar el proceso completo de Búsqueda y Análisis?")) return;
+
+            const searchBtn = document.getElementById('searchBtn');
+            const applyBtn = document.getElementById('applyBtn');
+
+            isActionPending = true;
+
+            // Disable BOTH buttons to prevent confusion
+            searchBtn.disabled = true;
+            applyBtn.disabled = true;
+
+            searchBtn.innerText = "Iniciando...";
+
+            try {
+                await fetch('/search', { method: 'POST' });
+
+                // Optimistic UI Update: Switch to Stop State immediately
+                searchBtn.innerText = "🛑 Detener Búsqueda";
+                searchBtn.onclick = stopSearch;
+                searchBtn.className = "btn-stop";
+                searchBtn.disabled = false;
+                applyBtn.style.display = 'none';
+
+                // No blocking alert needed, the UI change is feedback enough
+            } catch (e) {
+                alert("Error al iniciar búsqueda: " + e);
+                // Revert if error
+                searchBtn.innerText = "🚀 Iniciar Búsqueda";
+                searchBtn.className = "btn-apply";
+                searchBtn.disabled = false;
+            } finally {
+                isActionPending = false;
+            }
+        }
+
+        async function startAutoApply() {
+            if (isActionPending) return;
+            if (!confirm("¿Iniciar Auto-Apply con el último reporte generado?")) return;
+
+            const searchBtn = document.getElementById('searchBtn');
+            const applyBtn = document.getElementById('applyBtn');
+
+            isActionPending = true;
+
+            // Disable BOTH buttons
+            searchBtn.disabled = true;
+            applyBtn.disabled = true;
+
+            applyBtn.innerText = "Iniciando...";
+            try {
+                await fetch('/apply', { method: 'POST' });
+                alert("Se ha iniciado el proceso de Auto-Apply.");
+            } catch (e) {
+                alert("Error al iniciar Auto-Apply: " + e);
+            } finally {
+                isActionPending = false;
+            }
+        }
+
+        async function stopSearch() {
+            if (!confirm("¿Seguro que deseas detener la búsqueda? Se guardará el reporte actual.")) return;
+            const btn = document.getElementById('searchBtn');
+            isActionPending = true;
             btn.disabled = true;
             btn.innerText = "Deteniendo...";
 
             try {
                 await fetch('/stop', { method: 'POST' });
-                alert("Se ha enviado la señal de parada. El bot terminará la acción actual y guardará el reporte.");
+                alert("Se ha enviado la señal de parada.");
             } catch (e) {
                 alert("Error al enviar señal: " + e);
-                btn.disabled = false;
-                btn.innerText = "🛑 Detener Búsqueda";
+            } finally {
+                isActionPending = false;
             }
         }
 
         async function updateDashboard() {
+            if (isActionPending) return;
+
             try {
                 const response = await fetch('status.json?t=' + Date.now());
                 const data = await response.json();
+
+                // Button Visibility Toggle Logic
+                const searchBtn = document.getElementById('searchBtn');
+                const applyBtn = document.getElementById('applyBtn');
+
+                const isRunning = data.status && data.status.toLowerCase().includes('running');
+
+                if (isRunning) {
+                    // State: Running -> Show Stop Button on searchBtn spot
+                    searchBtn.innerText = "🛑 Detener Búsqueda";
+                    searchBtn.onclick = stopSearch;
+                    searchBtn.className = "btn-stop"; // Switch to red style
+                    searchBtn.disabled = false;
+
+                    // Hide Apply button to unclutter
+                    applyBtn.style.display = 'none';
+                } else {
+                    // State: Stopped -> Show Start Search Button
+                    searchBtn.innerText = "🚀 Iniciar Búsqueda";
+                    searchBtn.onclick = startSearchProcess;
+                    searchBtn.className = "btn-apply"; // Switch to green style
+                    searchBtn.disabled = false;
+
+                    // Show Apply button
+                    applyBtn.style.display = 'inline-block';
+                    applyBtn.disabled = false;
+                }
 
                 // Stats
                 document.getElementById('totalMatches').innerText = data.total_matches;

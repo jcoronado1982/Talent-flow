@@ -1,0 +1,5 @@
+2026/01/13-12:06:44.178 291e Reusing MANIFEST /home/jcoronado/Desktop/dev/TalentFlow/user_data_test_click/Default/Local Storage/leveldb/MANIFEST-000001
+2026/01/13-12:06:44.181 291e Recovering log #22
+2026/01/13-12:06:44.181 291e Reusing old log /home/jcoronado/Desktop/dev/TalentFlow/user_data_test_click/Default/Local Storage/leveldb/000022.log 
+2026/01/13-12:11:48.095 291e Level-0 table #26: started
+2026/01/13-12:11:48.116 291e Level-0 table #26: 29905 bytes OK
