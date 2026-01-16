@@ -28,5 +28,15 @@ dashboard/server.log
 # VS Code
 .vscode/
 
+
 # OS
 .DS_Store
+
+# Dynamic Data
+user_data_*/
+stop.signal
+resumen-*.html
+config/profile_config.json
+cookies.pkl
+cookies.json
+*.csv
