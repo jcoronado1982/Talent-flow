@@ -15,6 +15,8 @@ reports/
 job_report.csv
 user_data/
 user_data_auth/
+cv/
+*.db
 
 # Configuration & Secrets
 config/credentials.yaml
@@ -40,3 +42,5 @@ config/profile_config.json
 cookies.pkl
 cookies.json
 *.csv
+debug_failure_*.html
+*.signal
