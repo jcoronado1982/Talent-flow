@@ -271,7 +271,7 @@ class SearchBotManager:
             t_sync.join(timeout=2)
         
         self.monitor.log("💾 [SUPERVISOR] Guardando estado final...")
-        self.monitor.save_to_file()
+        self.monitor.save()
         
         # --- REPORTING ---
         total_duration = time.time() - total_start_time

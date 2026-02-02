@@ -14,7 +14,7 @@ class ApplyBotSupervisor:
     def __init__(self, headless=False):
         self.settings = Settings.load_credentials()
         self.config = Settings.load_profile()
-        self.browser = JobSearchBrowser(headless=headless)
+        self.browser = JobSearchBrowser(headless=headless, chrome_profile="Profile 1")
         print("   ✅ Browser Interface Initialized (Launch Phase Complete)")
         self.brain = JobAnalyzer()
         

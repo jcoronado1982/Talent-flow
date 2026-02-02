@@ -4,16 +4,19 @@ from playwright.sync_api import sync_playwright
 from src.config.settings import Settings
 
 class SessionManager:
-    def __init__(self, headless=False, user_data_dir="user_data_auth", guest_mode=False):
+    def __init__(self, headless=False, user_data_dir="user_data_auth", guest_mode=False, chrome_profile=None):
         self.playwright = sync_playwright().start()
         self.guest_mode = guest_mode
+        self.chrome_profile = chrome_profile
         
         if self.guest_mode:
             # En modo invitado usamos siempre un perfil temporal limpio
             self.user_data_path = tempfile.mkdtemp(prefix="talentflow_guest_")
             print(f"   [Browser] Modo Invitado: Usando perfil temporal {self.user_data_path}")
         else:
-            self.user_data_path = os.path.join(Settings.BASE_DIR, user_data_dir)
+            # Separate user_data_dir by profile to avoid collisions
+            suffix = f"_{chrome_profile.replace(' ', '_').lower()}" if chrome_profile else ""
+            self.user_data_path = os.path.join(Settings.BASE_DIR, f"{user_data_dir}{suffix}")
             
         self.context = self._launch_context(headless)
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
@@ -66,11 +69,14 @@ class SessionManager:
 
         try:
             import browser_cookie3
-            potential_paths = [
-                os.path.expanduser("~/.config/google-chrome/Profile 1/Cookies"),
-                os.path.expanduser("~/.config/google-chrome/Default/Cookies"),
-                os.path.expanduser("~/.config/google-chrome/Profile 2/Cookies")
-            ]
+            if self.chrome_profile:
+                potential_paths = [os.path.expanduser(f"~/.config/google-chrome/{self.chrome_profile}/Cookies")]
+            else:
+                potential_paths = [
+                    os.path.expanduser("~/.config/google-chrome/Profile 1/Cookies"),
+                    os.path.expanduser("~/.config/google-chrome/Default/Cookies"),
+                    os.path.expanduser("~/.config/google-chrome/Profile 2/Cookies")
+                ]
             domains = [".google.com", ".linkedin.com"]
             
             all_cookies = []

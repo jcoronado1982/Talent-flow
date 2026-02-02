@@ -318,7 +318,7 @@ def get_dashboard_stats():
     c.execute("SELECT COUNT(*) FROM jobs")
     stats['total_found'] = c.fetchone()[0]
     
-    c.execute("SELECT COUNT(*) FROM jobs WHERE match_score >= 30")
+    c.execute("SELECT COUNT(*) FROM jobs WHERE match_score >= 40")
     stats['total_matches'] = c.fetchone()[0]
     
     c.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status")
@@ -329,7 +329,7 @@ def get_dashboard_stats():
     c.execute('''
         SELECT id, company, role, location, work_mode, match_score, date_posted as date, created_at 
         FROM jobs 
-        WHERE match_score >= 30 
+        WHERE match_score >= 40 
         ORDER BY created_at DESC 
         LIMIT 5
     ''')

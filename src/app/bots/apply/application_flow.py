@@ -1,3 +1,4 @@
+import os
 import random
 import src.services.storage.database as db
 
@@ -19,7 +20,7 @@ class ApplicationFlow:
             
             # 0. Check Success IMMEDIATE (Priority)
             if page.get_by_text("Application sent").is_visible() or page.get_by_text("Solicitud enviada").is_visible():
-                 db.update_job_status(job_id, "Submitted", resume=job_context.get("target_resume"))
+                 db.update_job_status(job_id, "Submitted", resume=job_context.get("actual_resume") or job_context.get("target_resume"))
                  self.click_button(["Done", "Finalizar", "Dismiss", "Cerrar"]) 
                  return "Submitted"
 
@@ -31,19 +32,26 @@ class ApplicationFlow:
                      self.browser.human_delay(0.2, 0.5)
                  except: pass
             
-            # 1. Check Submit / Done buttons
-            if self.click_button(["Submit application", "Enviar solicitud"]):
-                db.update_job_status(job_id, "Submitted", resume=job_context.get("target_resume"))
+            # 1. Upload Resume (PRIORITY BEFORE SUBMIT)
+            target_file = job_context.get("target_resume")
+            if target_file and not job_context.get("actual_resume"):
+                job_context["actual_resume"] = self.resume_manager.smart_upload_resume(target_file)
+
+            # 2. Check Submit / Done buttons
+            submit_labels = ["Submit application", "Enviar solicitud", "Postularse"]
+            is_submit_ready = any(page.get_by_text(lbl, exact=False).is_visible() for lbl in submit_labels)
+            
+            if is_submit_ready and not job_context.get("actual_resume"):
+                print("      ⚠️ Submit button visible but CV not confirmed. Forcing final check/upload...")
+                job_context["actual_resume"] = self.resume_manager.smart_upload_resume(target_file)
+
+            if self.click_button(submit_labels):
+                db.update_job_status(job_id, "Submitted", resume=job_context.get("actual_resume") or job_context.get("target_resume"))
                 return "Submitted"
             
-            if self.click_button(["Done", "Hecho", "Finalizar"]):
-                db.update_job_status(job_id, "Submitted", resume=job_context.get("target_resume"))
+            if self.click_button(["Done", "Hecho", "Finalizar", "Hecho"]):
+                db.update_job_status(job_id, "Submitted", resume=job_context.get("actual_resume") or job_context.get("target_resume"))
                 return "Submitted"
-
-            # 2. Upload Resume
-            target_file = job_context.get("target_resume")
-            if target_file:
-                self.resume_manager.smart_upload_resume(target_file)
 
             # 3. Fill Form
             try:

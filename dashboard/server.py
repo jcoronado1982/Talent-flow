@@ -169,7 +169,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "stopped"}).encode())
 
         elif self.path == '/apply':
-            # 0. Concurrency Hack: Check for active process
+            # 0. Concurrency Hack
             if active_process and active_process.poll() is None:
                 self.send_response(409)
                 self.send_header("Content-type", "application/json")
@@ -177,8 +177,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"status": "error", "message": "Another process is already running"}).encode())
                 return
 
-            self.send_response(200)
             try:
+                # 1. Update status
                 status_path = os.path.join(DASHBOARD_DIR, "status.json")
                 if os.path.exists(status_path):
                     with open(status_path, "r") as f:
@@ -188,43 +188,34 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 data["status"] = "Running"
                 with open(status_path, "w") as f:
                     json.dump(data, f, indent=2)
-            except Exception as e:
-                print(f"⚠️ Error updating status.json on start: {e}")
-
-            # Robust Subprocess Launch
-            try:
-                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                script_path = os.path.join(base_dir, "src", "apply_bot.py")
-                script_path = os.path.join(base_dir, "src", "apply_bot.py")
-                log_path = os.path.join(base_dir, "dashboard", "apply_debug.log")
                 
-                # Cleanup previous stop signal
+                # 2. Subprocess Launch
+                log_path = os.path.join(DASHBOARD_DIR, "apply_debug.log")
                 if os.path.exists(SIGNAL_FILE):
                     os.remove(SIGNAL_FILE)
                 
-                print(f"Server: Launching {script_path}...", flush=True)
+                print(f"Server: Launching apply bot...", flush=True)
                 
-                # Pass full environment (DISPLAY, PATH, etc.)
-                env = os.environ.copy()
-                
-                # Launch independent apply bot? Or track it too? 
-                # User specifically asked for SEARCH process stop, but good to track apply too?
-                # For now let's just track the one we launch.
                 proc = subprocess.Popen(
                     ["python3", "-m", "src.apply_bot"],
-                    cwd=base_dir, # Run from root
+                    cwd=ROOT_DIR,
                     stdout=open(log_path, "w"),
                     stderr=subprocess.STDOUT,
-                    env=env
+                    env=os.environ.copy()
                 )
-                active_process = proc # Track it
+                active_process = proc
+
+                # 3. Correct Response
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "running"}).encode())
 
             except Exception as e:
                 print(f"Server Error launching bot: {e}", flush=True)
-                # We already sent 200 OK, just log error
+                self.send_error(500, str(e))
         
         elif self.path == '/search':
-             # 0. Concurrency Hack
             if active_process and active_process.poll() is None:
                 self.send_response(409)
                 self.send_header("Content-type", "application/json")
@@ -232,8 +223,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"status": "error", "message": "Another process is already running"}).encode())
                 return
 
-            self.send_response(200)
             try:
+                # 1. Update status
                 status_path = os.path.join(DASHBOARD_DIR, "status.json")
                 if os.path.exists(status_path):
                     with open(status_path, "r") as f:
@@ -243,35 +234,32 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 data["status"] = "Running"
                 with open(status_path, "w") as f:
                     json.dump(data, f, indent=2)
-            except Exception as e:
-                print(f"⚠️ Error updating status.json on start: {e}")
-            
-            # Robust Subprocess Launch for Search
-            try:
-                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                log_path = os.path.join(base_dir, "dashboard", "apply.log") 
                 
-                # Cleanup previous stop signal
+                # 2. Launch search
+                log_path = os.path.join(DASHBOARD_DIR, "apply.log") 
                 if os.path.exists(SIGNAL_FILE):
                     os.remove(SIGNAL_FILE)
 
-                print(f"Server: Launching src.main module for SEARCH...", flush=True)
-                
-                env = os.environ.copy()
+                print(f"Server: Launching search process (src.main)...", flush=True)
                 
                 proc = subprocess.Popen(
                     ["python3", "-m", "src.main"],
-                    cwd=base_dir, # Run from root
+                    cwd=ROOT_DIR,
                     stdout=open(log_path, "w"),
                     stderr=subprocess.STDOUT,
-                    env=env
+                    env=os.environ.copy()
                 )
-                active_process = proc # Track it
+                active_process = proc
+
+                # 3. Correct Response
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "running"}).encode())
 
             except Exception as e:
                 print(f"Server Error launching search: {e}", flush=True)
-            except Exception as e:
-                print(f"Server Error launching search: {e}", flush=True)
+                self.send_error(500, str(e))
 
         elif self.path == '/api/clear_jobs':
             try:

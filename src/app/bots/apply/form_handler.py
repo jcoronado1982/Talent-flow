@@ -47,20 +47,26 @@ class FormHandler:
                 "options": [o.strip() for o in options if o.strip()]
             })
 
-        # 3. Fieldsets (Radios)
+        # 3. Fieldsets (Radios & Checkboxes)
         fieldsets = modal.locator("fieldset").all()
         for i, fs in enumerate(fieldsets):
             if not fs.is_visible(): continue
             legend = fs.locator("legend").first
             if not legend.is_visible(): continue
             
-            radios = fs.locator("label").all()
+            labels = fs.locator("label").all()
+            # Determine if it's a checkbox group or radio group based on the first input inside
+            first_input = fs.locator("input").first
+            input_type = "radio"
+            if first_input.count() > 0:
+                input_type = first_input.get_attribute("type") or "radio"
+
             schema.append({
-                "type": "radio",
+                "type": input_type, # 'radio' or 'checkbox'
                 "label": legend.inner_text().strip(),
-                "id": f"radio_{i}",
+                "id": f"choice_{i}",
                 "locator": fs,
-                "options": [r.inner_text().strip() for r in radios],
+                "options": [r.inner_text().strip() for r in labels],
                 "error": self._get_validation_error(fs)
             })
 
@@ -121,12 +127,34 @@ class FormHandler:
                         field["locator"].fill(str(ans))
                 elif field["type"] == "select":
                     field["locator"].select_option(label=str(ans))
-                elif field["type"] == "radio":
+                elif field["type"] in ["radio", "checkbox"]:
                     options_els = field["locator"].locator("label").all()
+                    # For multi-select, AI might return a list or a comma-separated string
+                    target_answers = ans if isinstance(ans, list) else [x.strip() for x in str(ans).split(",")]
+                    
+                    found_any = False
                     for opt_el in options_els:
-                        if str(ans).lower() in opt_el.inner_text().lower():
-                            opt_el.click()
-                            break
+                        opt_text = opt_el.inner_text().lower()
+                        if any(str(a).lower() in opt_text for a in target_answers):
+                            # Try to click the specific input or the label
+                            try:
+                                # Checking if already checked for checkboxes
+                                checkbox = opt_el.locator("input[type='checkbox']")
+                                if checkbox.count() > 0:
+                                    if not checkbox.is_checked():
+                                        opt_el.click()
+                                else:
+                                     opt_el.click()
+                                found_any = True
+                            except:
+                                opt_el.click()
+                                found_any = True
+                            
+                            # If it's a radio, we stop at the first match
+                            if field["type"] == "radio":
+                                break
+                    if not found_any:
+                        print(f"         ⚠️ No matching option found for '{ans}' in {field['label']}")
                 self.browser.human_delay(0.1, 0.3)
             except Exception as e:
                 print(f"         ❌ Error filling field: {e}")

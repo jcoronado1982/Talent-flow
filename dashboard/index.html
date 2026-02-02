@@ -393,15 +393,20 @@
             if (isActionPending) return;
 
             try {
-                const response = await fetch('status.json?t=' + Date.now());
-                const data = await response.json();
+                // 1. Fetch Real-time Progress (status.json)
+                const statusResponse = await fetch('status.json?t=' + Date.now());
+                const statusData = await statusResponse.json();
+
+                // 2. Fetch Database Truth (api/stats)
+                const statsResponse = await fetch('/api/stats');
+                const statsData = await statsResponse.json();
 
                 // Button Visibility Toggle Logic
                 const searchBtn = document.getElementById('searchBtn');
                 const applyBtn = document.getElementById('applyBtn');
 
-                const isRunning = data.status && data.status.toLowerCase().includes('running');
-                const isClosing = data.status && data.status.toLowerCase().includes('closing');
+                const isRunning = statusData.status && statusData.status.toLowerCase().includes('running');
+                const isClosing = statusData.status && statusData.status.toLowerCase().includes('closing');
 
                 if (isClosing) {
                     searchBtn.innerText = "⏳ Cerrando (Terminando Match...)";
@@ -409,48 +414,46 @@
                     applyBtn.style.display = 'none';
                     searchBtn.className = "btn-stop";
                 } else if (isRunning) {
-                    // State: Running -> Show Stop Button on searchBtn spot
                     searchBtn.innerText = "🛑 Detener Búsqueda";
                     searchBtn.onclick = stopSearch;
-                    searchBtn.className = "btn-stop"; // Switch to red style
+                    searchBtn.className = "btn-stop";
                     searchBtn.disabled = false;
-
-                    // Hide Apply button to unclutter
                     applyBtn.style.display = 'none';
                 } else {
-                    // State: Stopped -> Show Start Search Button
                     searchBtn.innerText = "🚀 Iniciar Búsqueda";
                     searchBtn.onclick = startSearchProcess;
-                    searchBtn.className = "btn-apply"; // Switch to green style
+                    searchBtn.className = "btn-apply";
                     searchBtn.disabled = false;
-
-                    // Show Apply button
                     applyBtn.style.display = 'inline-block';
                     applyBtn.disabled = false;
                 }
 
-                // Stats
-                document.getElementById('totalMatches').innerText = data.total_matches;
-                document.getElementById('currentRole').innerText = data.current_role;
-                document.getElementById('currentLocation').innerText = data.current_location;
-                document.getElementById('processingCount').innerText = data.processing_count || 0;
+                // Stats Cards (Using DB Truth)
+                document.getElementById('totalMatches').innerText = statsData.total_matches || 0;
+                document.getElementById('currentRole').innerText = statusData.current_role || "Ready";
+                document.getElementById('currentLocation').innerText = statusData.current_location || "-";
+                
+                // For processing count, we use the statusData if running, else 0
+                document.getElementById('processingCount').innerText = statusData.processing_count || 0;
 
-                // Global Progress
-                const globalPct = (data.current_combination_index / Math.max(data.total_combinations, 1)) * 100;
+                // Global Progress (status.json)
+                const globalPct = (statusData.current_combination_index / Math.max(statusData.total_combinations, 1)) * 100;
                 document.getElementById('globalProgressBar').style.width = globalPct + '%';
                 document.getElementById('globalProgressText').innerText =
-                    `${data.current_combination_index} / ${data.total_combinations}`;
+                    `${statusData.current_combination_index} / ${statusData.total_combinations}`;
 
-                // Batch Progress
-                const batchPct = (data.current_job_index / Math.max(data.jobs_in_current_batch, 1)) * 100;
+                // Batch Progress (status.json)
+                const batchPct = (statusData.current_job_index / Math.max(statusData.jobs_in_current_batch, 1)) * 100;
                 document.getElementById('batchProgressBar').style.width = batchPct + '%';
                 document.getElementById('batchProgressText').innerText =
-                    data.jobs_in_current_batch > 0 ? `Oferta ${data.current_job_index} de ${data.jobs_in_current_batch}` : "Escaneando...";
+                    statusData.jobs_in_current_batch > 0 ? `Oferta ${statusData.current_job_index} de ${statusData.jobs_in_current_batch}` : "Escaneando...";
 
-                // Matches
+                // Recent Matches (Using DB Truth)
                 const matchesList = document.getElementById('matchesList');
-                if (data.recent_matches.length > 0) {
-                    matchesList.innerHTML = data.recent_matches.map(m => `
+                const recentMatches = statsData.recent_matches || [];
+                
+                if (recentMatches.length > 0) {
+                    matchesList.innerHTML = recentMatches.map(m => `
                         <div class="match-item">
                             <div>
                                 <strong>${m.company}</strong> (${m.location})<br>
@@ -467,12 +470,12 @@
                     matchesList.innerHTML = '<div class="match-item">Sin coincidencias recientes</div>';
                 }
 
-                // Logs
+                // Logs (status.json)
                 const consoleDiv = document.getElementById('consoleLog');
-                consoleDiv.innerHTML = data.logs.join('<br>> ');
+                consoleDiv.innerHTML = (statusData.logs || []).join('<br>> ');
 
             } catch (e) {
-                console.log("Waiting for server...", e);
+                console.log("Error updating dashboard:", e);
             }
         }
 

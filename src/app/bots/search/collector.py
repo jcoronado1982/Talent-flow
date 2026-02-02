@@ -21,7 +21,7 @@ class JobCollector:
 
     def collect(self, job_limit=200, max_pages=None, single_combo_only=False):
         self.monitor.log(f"Phase 1: Starting Job Collection (Limit: {job_limit}, MaxPages: {max_pages}, SingleCombo: {single_combo_only})...")
-        browser = JobSearchBrowser(headless=self.headless)
+        browser = JobSearchBrowser(headless=self.headless, chrome_profile="Profile 2")
         
         try:
             # Login

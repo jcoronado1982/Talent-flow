@@ -6,8 +6,8 @@ from .extractor import DataExtractor
 from .scanners import SearchScanner
 
 class JobSearchBrowser:
-    def __init__(self, headless=False, user_data_dir="user_data_auth"):
-        self.session = SessionManager(headless=headless, user_data_dir=user_data_dir)
+    def __init__(self, headless=False, user_data_dir="user_data_auth", chrome_profile=None):
+        self.session = SessionManager(headless=headless, user_data_dir=user_data_dir, chrome_profile=chrome_profile)
         self.page = self.session.page
         self.context = self.session.context
         

@@ -1,3 +1,4 @@
+import os
 import src.services.storage.database as db
 
 class JobProcessor:
@@ -71,13 +72,13 @@ class JobProcessor:
                     print("   🎉 Application Successfully Submitted!")
                     db.update_job_status(
                         job_id, "Applied", 
-                        resume=target_res,
+                        resume=job_context.get("actual_resume") or os.path.basename(target_res),
                         salary=job_context.get("applied_salary"),
                         currency=job_context.get("applied_currency")
                     )
                 elif result == "Manual":
                     print("   ⚠️  Complex form/Manual intervention needed.")
-                    db.update_job_status(job_id, "Manual", resume=target_res)
+                    db.update_job_status(job_id, "Manual", resume=job_context.get("actual_resume") or os.path.basename(target_res))
                 else:
                     db.update_job_status(job_id, "Failed", error=str(result))
             else:
