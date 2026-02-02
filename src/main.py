@@ -2,7 +2,7 @@ from src.app.bots.search.manager import SearchBotManager
 
 # --- CONFIGURACIÓN DE PRODUCCIÓN / PRUEBA ---
 # ¿Cuántas ofertas buscar por categoría? (25 para pruebas, 400 para buscar TODO)
-LIMIT = 150 
+LIMIT = 100 
 
 # ¿Buscar solo la primera categoría (cargo/ubicación) o todas las configuradas?
 # True = Solo la primera | False = Todas

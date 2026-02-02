@@ -67,7 +67,7 @@ class JobSearchBrowser:
             for attempt in range(3):
                 try:
                     self.page.goto(url, timeout=60000)
-                    self.human_delay(2.0, 3.0)
+                    self.human_delay(2.5, 3.5)
                     
                     # --- DYNAMIC LIST DISCOVERY ---
                     print("   🧠 [Nav] Analyzing DOM to find job list...")

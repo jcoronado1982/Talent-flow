@@ -63,7 +63,7 @@ class SearchScanner:
             try:
                 scroll_target = scroll_step * 500
                 self.page.evaluate(f"document.querySelector('{list_selector}').scrollTop = {scroll_target}")
-                self.interaction.human_delay(1.0, 1.5)
+                self.interaction.human_delay(1.5, 2.0)
                 
                 # OPTIMIZATION: If we already have enough items in DOM to satisfy current limit, stop scrolling early
                 current_count = self.page.locator(job_card_selector).count()
@@ -134,7 +134,7 @@ class SearchScanner:
                 # C. Deep Click to load Details
                 try:
                     item.click()
-                    self.interaction.human_delay(2.2, 3.5)
+                    self.interaction.human_delay(3.0, 4.0)
                     try:
                         self.page.wait_for_selector(".jobs-description__content", timeout=3000)
                     except: pass
