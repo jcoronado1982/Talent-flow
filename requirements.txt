@@ -1,3 +1,6 @@
 playwright
 google-generativeai
 pyyaml
+browser-cookie3
+pandas
+openpyxl

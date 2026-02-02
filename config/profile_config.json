@@ -1,33 +1,30 @@
 {
+  "personal_info": {
+    "full_name": "Jesus Coronado",
+    "email": "email.coronado@gmail.com",
+    "phone": "3007128140",
+    "location": "Bogotá, Colombia"
+  },
   "english_level": "B2",
   "years_of_experience": 20,
   "open_to_relocation": true,
+  "skill_clarifications": [
+    "Expert in JavaScript (Frontend/Browser/Scripting). I do NOT work with Node.js backend.",
+    "I am an AI Engineer using Python (LLMs, Agents, RAG, Fine-tuning).",
+    "Primary stacks: .NET/C# and Python/AI."
+  ],
   "target_roles": [
     "Technical Lead",
-    "Líder Técnico",
-    "Tech Lead",
-    "Lead Software Engineer",
-    "Staff Engineer",
     "Software Architect",
-    "Arquitecto de Software",
     "Senior Developer",
-    "Desarrollador Senior",
     "Full Stack Developer",
-    "Desarrollador Full Stack",
     "Backend Developer",
-    "Desarrollador Backend",
     "Frontend Developer",
-    "Desarrollador Frontend",
-    "AI Engineer",
-    "Ingeniero de IA",
-    "Machine Learning Engineer"
+    "AI Engineer"
   ],
   "location_preferences": [
-    "Medellín",
-    "Bogotá",
-    "Venezuela",
-    "Remote",
-    "Colombia (Remote Only)"
+    "Colombia",
+    "Venezuela"
   ],
   "location_rules": {
     "remote_allowlist": [
@@ -76,24 +73,24 @@
   ],
   "salary_expectations": {
     "default": {
-      "value": "10000000",
+      "value": "8000000",
       "currency": "COP"
     },
     "rules": [
       {
         "role_match": "Full Stack",
         "language": "es",
-        "value": "10000000"
+        "value": "8000000"
       },
       {
         "role_match": "Full Stack",
         "language": "en",
-        "value": "3500"
+        "value": "3000"
       },
       {
         "role_match": "Lead",
         "language": "es",
-        "value": "12000000"
+        "value": "10000000"
       },
       {
         "role_match": "Lead",
@@ -103,12 +100,12 @@
       {
         "role_match": "Senior",
         "language": "es",
-        "value": "10000000"
+        "value": "8000000"
       },
       {
         "role_match": "Senior",
         "language": "en",
-        "value": "3500"
+        "value": "3000"
       }
     ]
   },
@@ -357,17 +354,9 @@
         "level": 60,
         "years": 2
       },
-      "PHP": {
-        "level": 70,
-        "years": 9
-      },
       "Visual Basic": {
         "level": 70,
         "years": 10
-      },
-      "SugarCRM": {
-        "level": 50,
-        "years": 3
       },
       "Rust": {
         "level": 10,
@@ -498,8 +487,8 @@
         "years": 10
       },
       "MariaDB": {
-        "level": 80,
-        "years": 5
+        "level": 70,
+        "years": 10
       },
       "MongoDB": {
         "level": 85,
@@ -513,7 +502,7 @@
     "DevOps_Cloud": {
       "Git": {
         "level": 100,
-        "years": 11
+        "years": 12
       },
       "Docker": {
         "level": 90,

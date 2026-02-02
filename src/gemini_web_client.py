@@ -67,10 +67,11 @@ class AntigravityGemini:
             print(f"   ❌ [NativeLib] Error de conexión: {e}")
             raise
 
-    def chat(self, prompt, model="fast"):
+    def chat(self, prompt, model="fast", image_data=None):
         """
         Envía un mensaje. 
         model='pro' activa el hack de imagen para Ultra.
+        image_data: bytes de la imagen a subir (opcional).
         """
         # Anti-Ban Jitter: Espera aleatoria para parecer humano
         jitter = random.uniform(1.0, 2.5)
@@ -87,9 +88,8 @@ class AntigravityGemini:
         }
         
         # Construir payload
-        # Si es PRO, inyectamos imagen para forzar endpoint multimodal
-        image_data = None
-        if model.lower() in ["pro", "thinking"]:
+        # Si image_data no viene pero es PRO, inyectamos dummy
+        if not image_data and model.lower() in ["pro", "thinking"]:
              image_data = self.dummy_image
              
         payload = self._construct_payload(prompt, image_data)

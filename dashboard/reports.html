@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reportes TalentFlow</title>
+    <style>
+        :root {
+            --primary: #8E44AD;
+            --secondary: #2C3E50;
+            --accent: #E67E22;
+            --bg: #121212;
+            --card-bg: #1E1E1E;
+            --text: #F0F0F0;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 80%;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--primary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+
+        th {
+            background: #333;
+            color: var(--accent);
+        }
+
+        tr:hover {
+            background: #252525;
+        }
+
+        .status-applied {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        .status-failed {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            color: #f1c40f;
+        }
+
+        .status-discarded {
+            color: #7f8c8d;
+            /* Grey */
+            font-style: italic;
+        }
+
+        .status-processing {
+            color: var(--accent);
+            font-weight: bold;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        .btn-back {
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: #333;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        .filter-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        input,
+        select {
+            padding: 10px;
+            background: #252525;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <a href="/" class="btn-back">⬅ Volver al Dashboard</a>
+        <h1>📊 Reporte de Ofertas</h1>
+
+        <div class="filter-bar">
+            <input type="text" id="searchInput" placeholder="Buscar empresa o rol..." onkeyup="filterTable()">
+            <select id="statusFilter" onchange="filterTable()">
+                <option value="all">All Statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Processing">Processing</option>
+                <option value="Matched">Matched</option>
+                <option value="Applied">Applied</option>
+                <option value="Failed">Failed</option>
+                <option value="Discarded">Discarded</option>
+            </select>
+            <button onclick="loadJobs()"
+                style="padding:10px; background:var(--primary); color:white; border:none; cursor:pointer; border-radius:5px;">🔄
+                Actualizar</button>
+            <button onclick="clearReport()"
+                style="padding:10px; background:#c0392b; color:white; border:none; cursor:pointer; border-radius:5px; margin-left:auto;">🗑️
+                Eliminar Reporte</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40px;">ID</th>
+                    <th>MATCH</th>
+                    <th>COMPANY</th>
+                    <th>ROLE</th>
+                    <th>LOCATION</th>
+                    <th>SKILLS</th>
+                    <th>MODE</th>
+                    <th>DATE</th>
+                    <th>RESUME</th>
+                    <th>STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="jobsTable">
+                <tr>
+                    <td colspan="9">Loading...</td>
+                </tr>
+            </tbody>
+    </div>
+
+    <!-- Requirements Modal -->
+    <div id="reqModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center;">
+        <div
+            style="background:#1E1E1E; padding:40px; border-radius:10px; width:70%; max-width:900px; max-height:85vh; overflow-y:auto; border: 2px solid #E67E22; position:relative; box-shadow: 0 0 30px rgba(0,0,0,0.5);">
+            <button onclick="closeModal()"
+                style="position:absolute; top:15px; right:20px; background:none; border:none; color:white; font-size:2em; cursor:pointer;">&times;</button>
+            <h2 id="modalTitle" style="color:#8E44AD; margin-top:0; margin-bottom: 5px;">Job Details</h2>
+            <div id="modalMeta"
+                style="color:#aaa; font-size: 0.95em; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px;">
+            </div>
+            <div id="modalContent"
+                style="font-family: 'Segoe UI', sans-serif; line-height: 1.8; font-size: 1.1em; color: #ddd;"></div>
+        </div>
+    </div>
+
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            alert("⚠️ SYSTEM ERROR: " + msg + "\nLine: " + line);
+            document.getElementById('jobsTable').innerHTML = '<tr><td colspan="12" style="color:red">System Error: ' + msg + ' (Line ' + line + ')</td></tr>';
+            return false;
+        };
+
+        let allJobs = [];
+        console.log("Script loaded. Calling loadJobs...");
+
+        function renderTable(jobs) {
+            const tbody = document.getElementById('jobsTable');
+            if (jobs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12">No jobs found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = jobs.map((job, index) => {
+                // External Link Logic
+                let statusHtml = `<span class="status-${(job.status || 'Pending').toLowerCase().split(' ')[0]}">${job.status || 'Pending'}</span>`;
+                if (job.external_link) {
+                    statusHtml += ` <a href="${job.external_link}" target="_blank" title="Open External Application" style="text-decoration:none; font-size:1.2em;">🔗</a>`;
+                }
+
+                // AI Reason Extraction
+                let displayRequirements = job.requirements || '-';
+                if (job.raw_analysis) {
+                    try {
+                        const analysis = JSON.parse(job.raw_analysis);
+                        if (analysis.reason) {
+                            displayRequirements = `🤖 ${analysis.reason}`;
+                        }
+                    } catch (e) { }
+                }
+
+                return `
+                <tr onclick="showDetails(${index})" style="cursor:pointer;" title="Click to view details">
+                    <td style="font-family:monospace; color:var(--accent);">${job.id}</td>
+                    <td style="font-weight:bold; color:${job.match_score >= 80 ? '#27AE60' : job.match_score >= 40 ? '#F1C40F' : '#aaa'}">${job.match_score || 0}%</td>
+                    <td>${job.company || '-'}</td>
+                    <td>${job.url ? `<a href="${job.url}" target="_blank" onclick="event.stopPropagation()" style="color:#3498db; text-decoration:none;">${job.role || 'Unknown'}</a>` : (job.role || 'Unknown')}</td>
+                    <td>${job.location || '-'}</td>
+                    <td style="font-size:0.85em; color:#ddd;">${job.skills || '-'}</td>
+                    <td><span style="font-size:0.85em; background:#333; padding:2px 6px; border-radius:4px;">${job.work_mode || '-'}</span></td>
+                    <td>${job.date_posted || job.date || '-'}</td>
+                    <td style="font-size:0.85em; color:#3498db;">${job.applied_resume ? job.applied_resume.split('/').pop() : '-'}</td>
+                    <td>${statusHtml}</td>
+                </tr>
+            `}).join('');
+        }
+
+        async function loadJobs() {
+            try {
+                // Show a subtle indicator that we are updating
+                const title = document.querySelector('h1');
+                const originalTitle = "📋 Reporte de Ofertas";
+                title.innerText = originalTitle + " (Actualizando...)";
+
+                const res = await fetch('/api/jobs');
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                allJobs = await res.json();
+
+                // Sort by match_score DESC
+                allJobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+
+                // Re-apply current filters instead of resetting to all
+                filterTable();
+
+                title.innerText = originalTitle;
+            } catch (e) {
+                console.error("Background refresh error:", e);
+                // Don't alert() here as it breaks UX during auto-refresh
+            }
+        }
+
+        let currentFilteredJobs = []; // To keep track for correct indexing
+
+        function filterTable() {
+            const text = document.getElementById('searchInput').value.toLowerCase();
+            const status = document.getElementById('statusFilter').value;
+
+            currentFilteredJobs = allJobs.filter(job => {
+                const matchesText = (job.company || '').toLowerCase().includes(text) || (job.role || '').toLowerCase().includes(text);
+                const matchesStatus = status === 'all' || job.status === status;
+                return matchesText && matchesStatus;
+            });
+
+            renderTable(currentFilteredJobs);
+        }
+
+        function showDetails(index) {
+            const list = currentFilteredJobs.length > 0 ? currentFilteredJobs : allJobs;
+            const job = list[index];
+            if (!job) return;
+
+            document.getElementById('modalTitle').innerText = job.role;
+
+            let aiContent = "";
+            if (job.raw_analysis) {
+                try {
+                    const analysis = JSON.parse(job.raw_analysis);
+                    const verdictColor = analysis.verdict === 'APPLY' ? '#27AE60' : analysis.verdict === 'REJECT' ? '#E74C3C' : '#F1C40F';
+
+                    aiContent = `
+                        <div style="background:#252525; border:1px solid #444; border-radius:8px; padding:15px; margin-bottom:20px;">
+                            <h3 style="color:var(--primary); margin-top:0;">🤖 AI Analysis</h3>
+                            <div style="display:flex; gap:15px; margin-bottom:15px;">
+                                <div style="flex:1; background:#1a1a1a; padding:10px; border-radius:5px; border-left:4px solid ${verdictColor};">
+                                    <div style="font-size:0.8em; color:#888; text-transform:uppercase;">Verdict</div>
+                                    <div style="font-size:1.2em; font-weight:bold; color:${verdictColor};">${analysis.verdict || 'UNKNOWN'}</div>
+                                </div>
+                                <div style="flex:1; background:#1a1a1a; padding:10px; border-radius:5px; border-left:4px solid var(--accent);">
+                                    <div style="font-size:0.8em; color:#888; text-transform:uppercase;">Level Detected</div>
+                                    <div style="font-size:1.2em; font-weight:bold; color:white;">${analysis.seniority_level_detected || '-'}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom:15px;">
+                                <strong style="color:var(--accent);">Reason:</strong>
+                                <p style="margin:5px 0; color:#ddd; font-style:italic;">"${analysis.reason || '-'}"</p>
+                            </div>
+
+                            <div style="font-size:0.9em;">
+                                <strong style="color:#aaa;">Scoring Breakdown:</strong>
+                                <ul style="list-style:none; padding-left:10px; margin:5px 0;">
+                                    <li>🔹 <strong style="color:#888;">Tier 1 (Role):</strong> ${analysis.scoring_audit?.tier1_alignment?.score || 0} pts - <span style="color:#666;">${analysis.scoring_audit?.tier1_alignment?.evidence || ''}</span></li>
+                                    <li>🔹 <strong style="color:#888;">Tier 2 (Stack):</strong> ${analysis.scoring_audit?.tier2_core_stack?.score || 0} pts - <span style="color:#666;">${analysis.scoring_audit?.tier2_core_stack?.evidence || ''}</span></li>
+                                    <li>🔹 <strong style="color:#888;">Tier 3 (Cloud):</strong> ${analysis.scoring_audit?.tier3_infra?.score || 0} pts - <span style="color:#666;">${analysis.scoring_audit?.tier3_infra?.evidence || ''}</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                } catch (e) {
+                    console.error("Error parsing analysis:", e);
+                }
+            }
+
+            document.getElementById('modalMeta').innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <strong style="color:white; font-size:1.15em;">${job.company}</strong> 
+                        &nbsp;•&nbsp; ${job.location} 
+                        &nbsp;•&nbsp; <span style="color:#E67E22;">${job.date_posted || job.date || 'No Date'}</span>
+                        <div style="margin-top:10px;">
+                            ${job.work_mode && job.work_mode !== 'Unknown' ? `<span style="background:#333; padding:2px 8px; border-radius:4px; font-size:0.8em; border:1px solid #444;">${job.work_mode}</span> &nbsp;` : ''}
+                            <span style="color:#aaa; font-size:0.9em;">Source: ${job.source}</span>
+                        </div>
+                    </div>
+                    <div style="text-align:right; background:rgba(142, 68, 173, 0.1); padding:10px; border-radius:8px; border:1px solid var(--primary);">
+                        <div style="font-size:0.8em; color:#8E44AD; text-transform:uppercase;">Overall Match</div>
+                        <div style="font-size:1.8em; font-weight:bold; color:var(--primary);">${job.match_score || 0}%</div>
+                    </div>
+                </div>
+                <br>
+                <div style="background:#2C3E50; padding:10px; border-radius:5px; border-left:4px solid #3498db; margin-bottom:20px;">
+                    <strong style="color:#3498db;">📄 Resume Applied:</strong> <span style="color:#fff;">${job.applied_resume || 'None recorded'}</span>
+                </div>
+                ${aiContent}
+            `;
+
+            const rawText = job.raw_requirements || job.requirements || "No requirements text available.";
+            document.getElementById('modalContent').innerHTML = `
+                <h3 style="color:#E67E22; border-bottom:1px solid #333; padding-bottom:10px;">Full Requirements</h3>
+                ${formatRequirements(rawText)}
+            `;
+
+            document.getElementById('reqModal').style.display = 'flex';
+        }
+
+        function formatRequirements(text) {
+            if (!text) return "";
+            // 1. Safety Escape
+            let safe = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+            // 2. Highlighting Headers (Before break conversion)
+            // We look for typical headers and give them a strong visual style
+            safe = safe.replace(/((?:Responsibilities|Requirements|Qualifications|What you will do|Nice to have|Skills|About the role).*?:)/gi,
+                '<div style="color:var(--primary); font-size:1.15em; font-weight:bold; margin-top:20px; margin-bottom:10px; border-bottom:1px solid #333; display:inline-block;">$1</div>');
+
+            // 3. Bullet points: Try to detect them and make them nice
+            safe = safe.replace(/([✓✅•-])\s+/g, '<br><span style="color:var(--accent);">•</span> ');
+
+            // 4. Newlines: controlled spacing
+            // Single newlines become a space (join wrapped lines), Double newlines become a paragraph break
+            // But this is risky if the text is truly unstructured. Let's try preserving format but reducing gap.
+            safe = safe.replace(/\n\s*\n/g, '<div style="height:12px;"></div>'); // Paragraph gap
+            safe = safe.replace(/\n/g, '<br>'); // Single break
+
+            // 5. Cleanup start/end
+            safe = safe.trim();
+
+            return `<div style="font-size:0.95em; color:#ddd; text-align:justify;">${safe}</div>`;
+        }
+
+        function closeModal() {
+            document.getElementById('reqModal').style.display = 'none';
+        }
+
+        // Close on outside click (Safe)
+        const modal = document.getElementById('reqModal');
+        if (modal) {
+            modal.onclick = function (e) {
+                if (e.target === this) closeModal();
+            }
+        } else {
+            console.error("Critical: reqModal element not found in DOM.");
+        }
+
+
+
+        async function clearReport() {
+            if (!confirm("⚠️ ¿Estás seguro/a?\n\nEsto borrará PERMANENTEMENTE:\n1. Todas las ofertas de la base de datos.\n2. El historial de actividad.\n3. Los logs de auditoría.\n\nEl sistema quedará como nuevo.")) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/clear_jobs', { method: 'POST' });
+                if (!res.ok) throw new Error("Server Error");
+
+                alert("✅ Sistema reseteado correctamente.");
+                loadJobs(); // Refresh table (empty)
+            } catch (e) {
+                alert("❌ Error al limpiar: " + e.message);
+            }
+        }
+
+        // Initial load
+        loadJobs();
+
+        // Intelligent Auto-refresh: 
+        let lastStatus = null;
+        const refreshInterval = setInterval(async () => {
+            try {
+                const statusRes = await fetch('/status.json?t=' + Date.now());
+                const statusData = await statusRes.json();
+                const currentStatus = (statusData.status || '').toLowerCase();
+
+                // If it's running, or if it JUST STOPPED, do a refresh
+                if (currentStatus.includes('running') || (lastStatus && lastStatus.includes('running') && !currentStatus.includes('running'))) {
+                    loadJobs();
+                    console.log("Auto-refresh triggered.");
+                }
+
+                lastStatus = currentStatus;
+
+                // Cleanup title if not running
+                if (!currentStatus.includes('running')) {
+                    const title = document.querySelector('h1');
+                    if (title) title.innerText = "📊 Reporte de Ofertas";
+                }
+            } catch (e) {
+                console.error("Status check error:", e);
+            }
+        }, 5000);
+    </script>
+</body>
+
+</html>
