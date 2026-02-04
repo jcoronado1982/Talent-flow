@@ -138,6 +138,13 @@
                 <option value="Failed">Failed</option>
                 <option value="Discarded">Discarded</option>
             </select>
+            <select id="modeFilter" onchange="filterTable()">
+                <option value="all">All Modes</option>
+                <option value="Remote">Remote</option>
+                <option value="Hybrid">Hybrid</option>
+                <option value="On-site">On-site</option>
+                <option value="Unknown">Unknown</option>
+            </select>
             <button onclick="loadJobs()"
                 style="padding:10px; background:var(--primary); color:white; border:none; cursor:pointer; border-radius:5px;">🔄
                 Actualizar</button>
@@ -264,11 +271,13 @@
         function filterTable() {
             const text = document.getElementById('searchInput').value.toLowerCase();
             const status = document.getElementById('statusFilter').value;
+            const mode = document.getElementById('modeFilter').value;
 
             currentFilteredJobs = allJobs.filter(job => {
                 const matchesText = (job.company || '').toLowerCase().includes(text) || (job.role || '').toLowerCase().includes(text);
                 const matchesStatus = status === 'all' || job.status === status;
-                return matchesText && matchesStatus;
+                const matchesMode = mode === 'all' || job.work_mode === mode;
+                return matchesText && matchesStatus && matchesMode;
             });
 
             renderTable(currentFilteredJobs);

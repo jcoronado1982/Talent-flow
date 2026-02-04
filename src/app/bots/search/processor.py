@@ -270,31 +270,10 @@ class JobProcessor:
         _debug_log = "dashboard/processor_debug.log"
         active_processes = []
         
-        def listener():
-            """The Boss's ear: listens to worker reports and updates the dashboard."""
-            while True:
-                try:
-                    # Get report from worker
-                    report = results_queue.get(timeout=1)
-                    if report is None: # Sentinel value to stop
-                        break
-                    
-                    if report['type'] == 'match':
-                        self.monitor.add_match(report['job_data'], report['score'])
-                    elif report['type'] == 'log':
-                        self.monitor.log(report['message'])
-                    elif report['type'] == 'progress':
-                        self.monitor.update(
-                            current_job_index=report.get('current', 0),
-                            jobs_in_current_batch=report.get('total', 0)
-                        )
-                except: 
-                    # If we are waiting for workers and queue is empty, just loop
-                    continue
-
-        # Start Listener
-        t_listener = threading.Thread(target=listener, name="BossListener", daemon=True)
-        t_listener.start()
+        self.monitor.log("🧠 [BOSS] Iniciando Jerarquía de Procesos (Manager + Workers Subordinados)...")
+        
+        _debug_log = "dashboard/processor_debug.log"
+        active_processes = []
 
         # Write initial log
         with open(_debug_log, "a") as f: 
@@ -321,11 +300,13 @@ class JobProcessor:
                 processed = breakdown.get('Matched', 0) + breakdown.get('Discarded', 0)
                 processing = breakdown.get('Processing', 0)
                 
-                self.monitor.update(
-                    current_job_index=processed, 
-                    jobs_in_current_batch=total_found,
-                    processing_count=processing
-                )
+                # Report progress to Manager (Top Boss)
+                results_queue.put({
+                    'type': 'progress',
+                    'current': processed,
+                    'total': total_found,
+                    'processing': processing
+                })
                 
             except: pending_count = 0
             
@@ -372,7 +353,7 @@ class JobProcessor:
                 p.join() # Wait for worker to finish its job
         
         # Now that workers are done, tell the listener to finish
-        results_queue.put(None) 
-        t_listener.join(timeout=5)
+        # Sentinel None tells the manager's listener to drain if needed (not strictly necessary here but good practice)
+        # results_queue.put(None) 
         
         self.monitor.log("🏁 [Boss] Todos los trabajadores han finalizado. Cerrando cocina.")

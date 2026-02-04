@@ -113,7 +113,8 @@ class SearchBotManager:
                     elif report['type'] == 'progress':
                         self.monitor.update(
                             current_job_index=report.get('current', 0),
-                            jobs_in_current_batch=report.get('total', 0)
+                            jobs_in_current_batch=report.get('total', 0),
+                            processing_count=report.get('processing', 0)
                         )
                 except: continue
 
