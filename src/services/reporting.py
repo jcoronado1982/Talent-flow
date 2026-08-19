@@ -40,6 +40,7 @@ def generate_excel_report():
         report_df["Scan Time"] = df["created_at"]
         report_df["Date"] = df["date_posted"]
         report_df["Work Mode"] = df["work_mode"]
+        report_df["Language"] = df["language"]
 
         # Timestamp for filename
         timestamp = datetime.now().strftime("%d_%m_%Y_%H_%M")

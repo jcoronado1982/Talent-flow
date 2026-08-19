@@ -6,22 +6,35 @@
 # ==============================================================================
 import os
 import time
+from typing import Type, Optional
 from src.config.settings import Settings
+from src.domain.interfaces import IJobScraper
 from src.services.browser.client import JobSearchBrowser
 import src.services.storage.database as db
 
 class JobCollector:
-    def __init__(self, monitor, headless=False):
+    def __init__(self, monitor, headless=False, scraper_class: Optional[Type[IJobScraper]] = None, existing_browser=None):
         self.monitor = monitor
         self.settings = Settings.load_credentials()
         self.profile = Settings.load_profile()
         self.headless = headless
+        self.scraper_class = scraper_class or JobSearchBrowser
+        self.existing_browser = existing_browser
         from src.audit import AuditLogger
         self.audit = AuditLogger()
 
-    def collect(self, job_limit=200, max_pages=None, single_combo_only=False):
+    def collect(self, job_limit=40, max_pages=None, single_combo_only=False, auto_open_modal=False):
         self.monitor.log(f"Phase 1: Starting Job Collection (Limit: {job_limit}, MaxPages: {max_pages}, SingleCombo: {single_combo_only})...")
-        browser = JobSearchBrowser(headless=self.headless, chrome_profile="Profile 2")
+        
+        if self.existing_browser:
+            browser = self.existing_browser
+            self.monitor.log("      🔗 Re-utilizando sesión de navegador existente para exploración...")
+        else:
+            browser = self.scraper_class(headless=self.headless, chrome_profile="Profile 2")
+        
+        # Enable Explorer Mode in the scanner if requested
+        if auto_open_modal:
+            browser.scanner.auto_open_modal = True
         
         try:
             # Login
@@ -61,6 +74,7 @@ class JobCollector:
                     "company": details.get("company", "Unknown"),
                     "location": details.get("location", "Unknown"), 
                     "work_mode": details.get("work_mode", "Unknown"),
+                    "apply_type": details.get("apply_type", "Unknown"),
                     "raw_requirements": details.get("description", "")[:5000],
                     "analysis": None,
                 }
@@ -95,7 +109,8 @@ class JobCollector:
 
                     combo_index += 1
                     search_loc = loc.split("(")[0].strip()
-                    self.monitor.log(f"🔎 Buscando: {role} en {search_loc}...")
+                    effective_limit = 50 if "Colombia" in search_loc else 30
+                    self.monitor.log(f"🔎 Buscando: {role} en {search_loc} (Límite local: {effective_limit})...")
 
                     try:
                         # URL-based Pagination Loop with Time Fallback
@@ -103,7 +118,7 @@ class JobCollector:
                         current_filter_idx = 0
                         combo_collected = 0
                         
-                        while current_filter_idx < len(filters) and combo_collected < job_limit:
+                        while current_filter_idx < len(filters) and combo_collected < effective_limit:
                             current_filter = filters[current_filter_idx]
                             filter_label = "24h" if current_filter == "r86400" else "1 semana"
                             
@@ -111,7 +126,7 @@ class JobCollector:
                             page_num = 1
                             found_any_in_filter = False
                             
-                            while combo_collected < job_limit:
+                            while combo_collected < effective_limit:
                                 if stop_requested: break
                                 if os.path.exists(Settings.STOP_SIGNAL): 
                                     stop_requested = True; break
@@ -122,7 +137,7 @@ class JobCollector:
                                 browser.search_jobs(site, role, search_loc, time_filter=current_filter, offset=offset)
                                 
                                 # 2. Scan current page deeply
-                                current_page_limit = job_limit - combo_collected
+                                current_page_limit = effective_limit - combo_collected
                                 count, real_total = browser.scan_search_results(site, limit=current_page_limit, callback_fn=save_raw_callback, monitor=self.monitor)
                                 
                                 # count only includes NEW items saved. 
@@ -138,7 +153,7 @@ class JobCollector:
                                 page_num += 1
 
                                 # Safety Cap: Don't paginate forever if real_total extraction failed
-                                if offset > (job_limit + 100):
+                                if offset > (effective_limit + 100):
                                     self.monitor.log(f"🛑 [Collector] Límite de seguridad de offset alcanzado ({offset}). Avanzando.")
                                     break
 
@@ -152,7 +167,7 @@ class JobCollector:
                                     self.monitor.log(f"🛑 [AUDIT] Límite de páginas alcanzado ({max_pages}).")
                                     break
                                 
-                                target_goal = real_total if real_total else job_limit
+                                target_goal = real_total if real_total else effective_limit
                                 self.monitor.log(f"📊 Progreso [{role}]: {combo_collected}/{target_goal} recolectadas.")
 
                             if found_any_in_filter:

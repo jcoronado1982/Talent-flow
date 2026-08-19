@@ -149,6 +149,7 @@ class SearchScanner:
                     "company": details.get("company", "Unknown"),
                     "location": details.get("location", "Unknown"),
                     "work_mode": details.get("work_mode", "Unknown"),
+                    "apply_type": details.get("apply_type", "Unknown"),
                     "date": details.get("date", "Unknown"),
                     "description": details.get("description", item_text)
                 }
@@ -156,9 +157,24 @@ class SearchScanner:
                 # Callback to Collector
                 save_result = callback_fn(final_details, url)
                 
+                # --- AUTO INSPECTION TRIGGER ---
+                if getattr(self, "auto_open_modal", False) and final_details.get("apply_type") == "Easy Apply":
+                    msg = f"      ✨ [Scanner] Modo Explorador: Abriendo formulario para '{final_details['company']}'..."
+                    if self.monitor: self.monitor.log(msg)
+                    
+                    try:
+                        apply_btn = self.page.locator("button.jobs-apply-button").first
+                        if apply_btn.is_visible():
+                            apply_btn.click()
+                            self.interaction.human_delay(2.0, 3.0)
+                            # Return early with success to allow Apply Bot to take over the open modal
+                            return 1, real_total 
+                    except Exception as btn_err:
+                        if self.monitor: self.monitor.log(f"      ⚠️ No se pudo abrir el formulario: {btn_err}")
+
                 if save_result is False: # Stop Signal
                     self.audit.log("SKIPPED", company=final_details['company'], role=final_details['title'], reason="Callback Rejection (Stop Signal)", url=url)
-                    return count, real_total
+                    return count, real_total 
                 
                 if save_result == "DUPLICATE":
                     self.audit.log("DUPLICATE", company=final_details['company'], role=final_details['title'], url=url)

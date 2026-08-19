@@ -1,10 +1,20 @@
 import os
+import re
 from src.config.settings import Settings
 
 class ResumeManager:
     def __init__(self, browser, config):
         self.browser = browser
         self.config = config
+
+    def _word_in_text(self, word, target_text):
+        import re
+        word = word.lower()
+        if any(c in word for c in ["#", "+", "."]):
+            pattern = r'(?i)(?<![\w])' + re.escape(word) + r'(?![\w])'
+        else:
+            pattern = r'\b' + re.escape(word) + r'\b'
+        return bool(re.search(pattern, target_text))
 
     def detect_language(self, text):
         text = text.lower()
@@ -14,89 +24,135 @@ class ResumeManager:
         if "ingeniero" in text: score_es += 1
         return "es" if score_es > score_en else "en"
 
-    def get_resume_filename(self, role, desc, lang):
+    def get_resume_filename(self, role, desc, lang, stored_filename=None):
         """
-        Selects the best resume with high-intelligence matching.
-        PRIORITY: 
-        1. Tech in TITLE + Leader/Dev status match.
-        2. Tech in DESC + Leader/Dev status match.
-        3. Fallbacks.
+        Selects the best resume using deterministic mapping from cv_profile.json.
+        Naming Convention: CV_{prefix}_{exp}_{city}_{role}_{tech}_{lang}_{owner}.pdf
         """
         import re
+
+        # 1. THROUGH PRE-SELECTED FILENAME (Manual bypass from DB)
+        if stored_filename:
+            role_folder = "Leader" if "_L_" in stored_filename else "Developer"
+            city_folder = "bogota" if "_B_" in stored_filename else "medellin"
+            full_path = os.path.join(Settings.BASE_DIR, "cv", role_folder, city_folder, stored_filename)
+            if os.path.exists(full_path):
+                return full_path
+            resolved = self._resolve_resume_path(stored_filename)
+            if os.path.exists(resolved): return resolved
+
+        # 2. DETERMINISTIC ENGINE (Using cv_profile.json)
+        config_data = self.config.get("resume_rules")
+        
+        # Fallback to legacy if config is a list (old format)
+        if isinstance(config_data, list):
+            return self._legacy_get_resume_filename(role, desc, lang, config_data)
+        
+        if not isinstance(config_data, dict) or "rules" not in config_data:
+            print("   ⚠️  Warning: cv_profile.json missing or invalid. Using default CV.")
+            return self._resolve_resume_path("CV_15_M_D_P_ES_Jesus_Coronado.pdf")
+
+        agent_cfg = config_data.get("agent_config", {})
+        rules_cfg = config_data.get("rules", {})
+        
         role_lower = role.lower()
         desc_lower = (desc or "").lower()
-        rules = self.config.get("resume_rules", [])
+        content_lower = role_lower + " " + desc_lower
         
-        # 0. Smart Language Detection
-        spanish_indicators = ["experiencia", "requisitos", "conocimientos", "manejo", "años", "responsabilidades", "vacante"]
-        is_actually_spanish = any(word in desc_lower for word in spanish_indicators)
-        effective_lang = "es" if is_actually_spanish else lang
+        # A. Detect Role (L vs D)
+        role_map = rules_cfg.get("role_mapping", {})
+        leader_keywords = role_map.get("leader_keywords", [])
+        is_leader = any(self._word_in_text(kw, role_lower) for kw in leader_keywords)
+        role_code = role_map.get("codes", {}).get("leader" if is_leader else "developer", "D")
+        role_folder = "Leader" if is_leader else "Developer"
+        
+        # B. Detect Tech (J, C, P)
+        tech_map = rules_cfg.get("tech_mapping", {})
+        tech_code = "P" # Default to Python
+        for code, keywords in tech_map.items():
+            if any(self._word_in_text(kw, content_lower) for kw in keywords):
+                tech_code = code
+                break
+        
+        # C. Detect City (B, M)
+        city_map = rules_cfg.get("city_mapping", {})
+        city_code = city_map.get("__default__", "M")
+        for city, code in city_map.items():
+            if city != "__default__" and city in content_lower:
+                city_code = code
+                break
+        city_folder = "bogota" if city_code == "B" else "medellin"
 
-        print(f"   🔍 Choosing Resume for: {role[:40]}... (Lang: {effective_lang})")
-
-        def word_in_text(word, target_text):
-            word = word.lower()
-            if any(c in word for c in ["#", "+", "."]):
-                pattern = r'(?i)(?<![\w])' + re.escape(word) + r'(?![\w])'
-            else:
-                pattern = r'\b' + re.escape(word) + r'\b'
-            return bool(re.search(pattern, target_text))
-
-        is_lead_match = any(word_in_text(x, role_lower) for x in ["lead", "staff", "principal", "architect", "arquitecto", "líder", "lider", "manager", "head"])
-        is_dev_match = any(word_in_text(x, role_lower) for x in ["developer", "engineer", "desarrollador", "ingeniero", "full stack", "fullstack", "backend", "frontend", "senior", "sr"])
-
-        # detected_status is True for Leader, False for Developer
-        # Logic: If it mentions Lead/Architect, it's Leader. 
-        # If it ONLY mentions Senior/Engineer/Developer, it's Developer.
-        detected_status_leader = is_lead_match
-
-        # PASS 1: TECHNOLOGY IN TITLE (Strongest Match)
-        for rule in rules:
-            if rule.get("language") != effective_lang: continue
-            tech_keywords = rule.get("keywords") or (rule.get("match_all")[0] if "match_all" in rule else [])
-            
-            if any(word_in_text(k, role_lower) for k in tech_keywords):
-                is_leader_rule = "match_all" in rule
-                if is_leader_rule == detected_status_leader:
-                    print(f"      🎯 TITLE MATCH (Tech + Status): {rule['file']}")
-                    return self._resolve_resume_path(rule["file"])
-
-        # PASS 2: LEADERSHIP RULES (Description Match)
-        # Only if detected as Leader or ambiguous
-        if detected_status_leader:
-            for rule in rules:
-                if rule.get("language") != effective_lang or "match_all" not in rule: continue
-                groups = rule["match_all"]
-                if all(any(word_in_text(k, role_lower + " " + desc_lower) for k in group) for group in groups):
-                    print(f"      ✅ LEADER MATCH (Desc keywords): {rule['file']}")
-                    return self._resolve_resume_path(rule["file"])
-
-        # PASS 3: DEVELOPER RULES (Description Match)
-        # Only if detected as Developer or ambiguous
-        if not detected_status_leader:
-            for rule in rules:
-                if rule.get("language") != effective_lang or "match_all" in rule: continue
-                if any(word_in_text(k, role_lower + " " + desc_lower) for k in rule.get("keywords", [])):
-                    print(f"      ✅ TECH MATCH (Desc keywords): {rule['file']}")
-                    return self._resolve_resume_path(rule["file"])
-
-        # PASS 4: SMART FALLBACKS BY STATUS
-        print(f"      ⚠️ No specific rule matched for {effective_lang}. Looking for status fallback...")
-        # 4a. Best match for status and language
-        for rule in rules:
-            if rule.get("language") != effective_lang: continue
-            is_leader_rule = "match_all" in rule
-            if is_leader_rule == detected_status_leader:
-                print(f"      ✅ FALLBACK MATCH (Status + Lang): {rule['file']}")
-                return self._resolve_resume_path(rule["file"])
-
-        # 4b. Just language
-        for rule in rules:
-            if rule.get("language") == effective_lang:
-                return self._resolve_resume_path(rule["file"])
-
-        filename = rules[0]["file"] if rules else "default.pdf"
+        # D. Detect Language (EN, ES)
+        # Use smart detection result passed in 'lang' but mapped to Profile codes
+        lang_map = rules_cfg.get("language_mapping", {})
+        lang_code = lang_map.get("spanish" if lang == "es" else "english", "EN")
+        
+        # E. Build Filename
+        # Format: {prefix}_{exp}_{city}_{role}_{tech}_{lang}_{owner}{ext}
+        fmt = agent_cfg.get("naming_format", "CV_{prefix}_{exp}_{city}_{role}_{tech}_{lang}_{owner}{ext}")
+        filename = fmt.format(
+            prefix=agent_cfg.get("prefix", "CV"),
+            exp=agent_cfg.get("experience", "20"),
+            city=city_code,
+            role=role_code,
+            tech=tech_code,
+            lang=lang_code,
+            owner=agent_cfg.get("owner", "Jesus_Coronado"),
+            ext=agent_cfg.get("file_extension", ".pdf")
+        )
+        
+        print(f"   🔍 Choosing Resume for: {role[:40]}...")
+        print(f"      📍 Components: Role={role_code}, Tech={tech_code}, City={city_code}, Lang={lang_code}")
+        
+        final_path = os.path.join(Settings.BASE_DIR, "cv", role_folder, city_folder, filename)
+        if os.path.exists(final_path):
+             print(f"      🎯 Deterministic Match: {role_folder}/{city_folder}/{filename}")
+             return final_path
+        
+        print(f"      ⚠️  Built path not found, falling back to global search: {filename}")
         return self._resolve_resume_path(filename)
+
+    def _legacy_get_resume_filename(self, role, desc, lang, rules):
+        role_lower = role.lower()
+        desc_lower = (desc or "").lower()
+        is_lead_match = any(self._word_in_text(x, role_lower) for x in ["lead", "staff", "architect", "manager", "head"])
+        for rule in rules:
+            if not isinstance(rule, dict): continue
+            if rule.get("language") != lang: continue
+            if is_lead_match == ("match_all" in rule):
+                return self._resolve_resume_path(rule["file"])
+        return self._resolve_resume_path("CV_Jesus_Coronado.pdf")
+
+    def get_salary_expectation(self, role, lang):
+        """
+        Resolves the salary expectation based on the role and language detected.
+        Uses rules from profile_config.json.
+        """
+        salary_config = self.config.get("salary_expectations", {})
+        rules = salary_config.get("rules", [])
+        default = salary_config.get("default", {"value": "Negotiable", "currency": "COP"})
+        
+        role_lower = role.lower()
+        lang_lower = str(lang).lower()
+        
+        # Determine status (Lead/Manager vs Dev)
+        is_lead = any(x in role_lower for x in ["lead", "staff", "principal", "architect", "arquitecto", "líder", "lider", "manager", "head"])
+        
+        # Search for best rule
+        for rule in rules:
+            role_match = rule.get("role_match", "").lower()
+            if rule.get("language") == lang_lower:
+                if "lead" in role_match and is_lead:
+                    return rule.get("value"), rule.get("currency", default.get("currency", "COP"))
+                if not is_lead and any(x in role_match for x in ["senior", "full stack", "developer"]):
+                    return rule.get("value"), rule.get("currency", default.get("currency", "COP"))
+
+        for rule in rules:
+            if rule.get("language") == lang_lower:
+                return rule.get("value"), rule.get("currency", default.get("currency", "COP"))
+
+        return default.get("value"), default.get("currency")
 
     def _resolve_resume_path(self, filename):
         base_dir = os.path.join(Settings.BASE_DIR, "cv")
@@ -105,86 +161,53 @@ class ResumeManager:
                 return os.path.join(root, filename)
         return os.path.join(base_dir, filename)
 
-    def smart_upload_resume(self, file_path):
+    def smart_upload_resume(self, file_path, page=None):
         """Finds the MOST RELEVANT file input and uploads the resume."""
-        page = self.browser.page
+        if not page: page = self.browser.page
         basename = os.path.basename(file_path)
         
         upload_triggers = [
             "button:has-text('Upload resume')",
-            "button:has-text('Cargar currículum')",
-            "button:has-text('Subir currículum')",
-            "button[aria-label*='Upload resume']",
-            "button[aria-label*='Cargar currículum']"
+            "button:has-text('Cargar curriculum')",
+            "button[aria-label*='Upload resume']"
         ]
         
-        # 1. Check if we are already using the correct one (if list is visible)
         try:
              resumes_list = page.locator(".jobs-document-card__title").all()
              for res in resumes_list:
                  res_text = res.inner_text().lower()
                  clean_basename = basename.lower().replace(".pdf", "")
-                 if clean_basename in res_text or (len(clean_basename) > 10 and res_text.startswith(clean_basename[:15])):
-                     print(f"      ✅ Resume '{basename}' (or match) already selected in list.")
+                 if clean_basename in res_text:
+                     print(f"      ✅ Resume '{basename}' already selected.")
                      res.click()
-                     return basename # Confirmed match
+                     return basename
         except: pass
 
-        # 2. Try to find the file input
         file_inputs = page.locator("input[type='file']").all()
-        
         if not file_inputs:
              for sel in upload_triggers:
                  btn = page.locator(sel).first
                  if btn.is_visible():
-                     print(f"      🖱️ Clicking '{sel}' to reveal file input...")
                      btn.click()
-                     self.browser.human_delay(1, 2)
+                     self.browser.human_delay(1)
                      file_inputs = page.locator("input[type='file']").all()
                      break
         
-        if not file_inputs:
-             # Fallback: Capture whatever is currently selected title if possible
-             try:
-                 selected = page.locator(".jobs-document-card--active .jobs-document-card__title").first
-                 if selected.is_visible():
-                     return f"[LinkedIn Default] {selected.inner_text().strip()}"
-             except: pass
-             
-             # If we see any indicator that we SHOULD be on resume step but found nothing, return failure
-             # otherwise return None to keep trying.
-             resume_indicators = ["resume", "currículum", "curriculum", "cv"]
-             page_text = page.content().lower()
-             if any(x in page_text for x in resume_indicators):
-                 print("      ⚠️ Resume indicators found but no input/button accessible.")
-                 # Don't return yet, maybe it's just slow.
-             
-             return None # Keep trying on next steps
+        if not file_inputs: return None
 
         print(f"   📂 Attempting intelligent upload: {basename}")
-        
-        target_input = None
-        if len(file_inputs) == 1:
-            target_input = file_inputs[0]
-        else:
-            for inp in file_inputs:
-                attr_str = (inp.get_attribute("name") or "") + (inp.get_attribute("id") or "") + (inp.get_attribute("aria-label") or "")
-                if any(x in attr_str.lower() for x in ["resume", "cv", "curriculum", "file"]):
-                    target_input = inp
-                    break
-            if not target_input: target_input = file_inputs[0]
+        target_input = file_inputs[0]
+        for inp in file_inputs:
+            attr_str = (inp.get_attribute("name") or "") + (inp.get_attribute("id") or "")
+            if any(x in attr_str.lower() for x in ["resume", "cv", "curriculum"]):
+                target_input = inp
+                break
 
         try:
-            target_input.attach_file(file_path)
+            target_input.set_input_files(file_path)
             print(f"      ✅ File uploaded: {basename}")
-            self.browser.human_delay(3, 5)
+            self.browser.human_delay(3)
             return basename
         except Exception as e:
-            try:
-                target_input.set_input_files(file_path)
-                print(f"      ✅ File uploaded (fallback): {basename}")
-                self.browser.human_delay(3, 5)
-                return basename
-            except Exception as e2:
-                print(f"      ❌ Smart Upload Error: {e2}")
-                return "Upload Failed"
+            print(f"      ❌ Smart Upload Error: {e}")
+            return "Upload Failed"

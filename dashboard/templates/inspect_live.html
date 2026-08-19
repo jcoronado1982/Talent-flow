@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🕵️ Panel de Inspección - TalentFlow</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass: rgba(255, 255, 255, 0.05);
+            --primary: #4F46E5;
+            --accent: #10B981;
+            --bg: #0F172A;
+            --text: #F8FAFC;
+            --gold: #F59E0B;
+            --danger: #EF4444;
+            --code-bg: #1E293B;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .traffic-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-height: 300px;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .json-viewer {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: #E2E8F0;
+            background: var(--code-bg);
+            padding: 8px;
+            border-radius: 12px;
+            overflow-y: auto;
+            max-height: 600px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .field-card {
+            padding: 2px 0;
+            margin-bottom: 2px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .field-label { font-weight: 400; color: #CBD5E1; font-size: 0.75rem; }
+        .field-meta { display: inline; font-size: 0.6rem; color: #475569; margin-left: 10px; }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4); }
+
+        .btn-start { background: var(--accent); }
+        .btn-stop { background: var(--danger); }
+        .btn-next {
+            background: var(--gold);
+            color: #000;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            animation: pulse 2s infinite;
+            display: none;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+
+        .empty-alert {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            color: #FCA5A5;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <h1 style="margin: 0; font-size: 1.5rem;">🕵️ Inspector Live</h1>
+            <div id="status-badge" class="status-badge">Listo</div>
+        </div>
+        <div style="display: flex; gap: 15px; align-items: center;">
+            <button id="btn-start" class="btn btn-start" onclick="controlInspector('start')">▶️ INICIAR</button>
+            <button id="btn-stop" class="btn btn-stop" style="display:none;" onclick="controlInspector('stop')">⏹️ DETENER</button>
+            <button id="btn-clear" class="btn btn-stop" onclick="clearData()">🧹 LIMPIAR VISTA</button>
+            <button id="btn-next" class="btn btn-next" onclick="sendNext()">🚀 PASO SIGUIENTE</button>
+        </div>
+    </div>
+
+    <div id="empty-scan-alert" class="empty-alert">
+        ⚠️ <b>Aviso de Captura:</b> El bot detectó un formulario pero no encontró campos compatibles. Esto puede deberse a que el formulario está dentro de un iframe o usa selectores no estándar.
+    </div>
+
+    <!-- Nivel 0: Prompt Completo (NUEVO) -->
+    <div class="card" style="margin-bottom: 20px; min-height: auto;">
+        <h2 style="color: var(--gold);">🧠 PROMPT COMPLETO (Instrucciones + Perfil + Datos)</h2>
+        <div id="full-prompt-container" class="json-viewer" style="max-height: 200px; font-size: 0.7rem; color: #94A3B8;">
+            Esperando primera consulta a la IA...
+        </div>
+    </div>
+
+    <!-- Nivel 1: Mapeo y Decisiones -->
+    <div class="main-grid">
+        <div class="card">
+            <h2>🔍 DOM MAPPING (Schema)</h2>
+            <div id="schema-container" class="json-viewer">
+                <p style="color: #64748B;">Esperando escaneo...</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🤖 AI DECISION (Respuestas)</h2>
+            <div id="answers-container" class="json-viewer">
+                <p style="color: #64748B;">Las respuestas aparecerán aquí...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nivel 2: Tráfico Crudo -->
+    <div class="traffic-grid">
+        <div class="card">
+            <h2>📤 TRAFFIC IN (AI Prompt Payload)</h2>
+            <div id="traffic-in-container" class="json-viewer">{}</div>
+        </div>
+
+        <div class="card">
+            <h2>📥 TRAFFIC OUT (Raw AI Response)</h2>
+            <div id="traffic-out-container" class="json-viewer">{}</div>
+        </div>
+    </div>
+
+    <script>
+        let lastTimestamp = 0;
+        let eventSource = null;
+
+        function initSSE() {
+            if (eventSource) eventSource.close();
+            
+            eventSource = new EventSource('/events');
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const payload = JSON.parse(event.data);
+                    const state = payload.status;
+                    const diag = state.diagnostics;
+
+                    if (diag && diag.active) {
+                        if (diag.timestamp > lastTimestamp) {
+                            lastTimestamp = diag.timestamp;
+                            updateUI(diag);
+                        }
+                        document.getElementById('btn-next').style.display = 'block';
+                        document.getElementById('btn-start').style.display = 'none';
+                        document.getElementById('btn-stop').style.display = 'block';
+                        document.getElementById('status-badge').innerText = diag.last_event;
+                    } else {
+                        document.getElementById('btn-next').style.display = 'none';
+                        document.getElementById('btn-start').style.display = 'block';
+                        document.getElementById('btn-stop').style.display = 'none';
+                        document.getElementById('status-badge').innerText = "Listo";
+                        
+                        // Clear UI if bot stopped
+                        if (diag && diag.last_event === "Stopped from Web") {
+                             document.getElementById('schema-container').innerHTML = '<p style="color: #64748B;">Esperando escaneo...</p>';
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error parsing SSE:", err);
+                }
+            };
+
+            eventSource.onerror = function() {
+                console.log("SSE Connection lost. Reconnecting in 3s...");
+                eventSource.close();
+                setTimeout(initSSE, 3000);
+            };
+        }
+
+        function updateUI(diag) {
+            const schemaCont = document.getElementById('schema-container');
+            const answerCont = document.getElementById('answers-container');
+            const tinCont = document.getElementById('traffic-in-container');
+            const toutCont = document.getElementById('traffic-out-container');
+            const alert = document.getElementById('empty-scan-alert');
+
+            // Show alert if schema is empty but bot is active
+            alert.style.display = (diag.schema.length === 0 && diag.last_event.includes("Complete")) ? 'block' : 'none';
+
+            if (diag.schema.length > 0) {
+                schemaCont.innerHTML = diag.schema.map(f => `
+                    <div class="field-card">
+                        <span class="field-label">${f.label || "Sin Etiqueta"}</span>
+                        <span class="field-meta">${f.id} | ${f.type}</span>
+                    </div>
+                `).join('');
+            }
+
+            answerCont.innerText = JSON.stringify(diag.answers, null, 2);
+            toutCont.innerText = JSON.stringify(diag.traffic_out, null, 2);
+
+            // Handle Full Prompt (Nivel 0 y Traffic In)
+            const fullPromptCont = document.getElementById('full-prompt-container');
+            if (diag.traffic_in) {
+                if (typeof diag.traffic_in === 'string') {
+                    fullPromptCont.innerText = diag.traffic_in;
+                    tinCont.innerText = diag.traffic_in;
+                } else {
+                    // Si es un objeto (JSON), lo mostramos formateado en ambos lados para no dejar el cuadro superior vacío
+                    const jsonStr = JSON.stringify(diag.traffic_in, null, 2);
+                    fullPromptCont.innerText = "JSON Payload (No prompt generated yet):\n" + jsonStr;
+                    tinCont.innerText = jsonStr;
+                }
+            } else {
+                fullPromptCont.innerText = "Esperando captura de datos...";
+                tinCont.innerText = "{}";
+            }
+        }
+
+        async function controlInspector(action) {
+            const btn = document.getElementById(`btn-${action}`);
+            const originalText = btn.innerText;
+            
+            if (action === 'stop') {
+                btn.innerText = "⌛ DETENIENDO...";
+                btn.disabled = true;
+            }
+
+            try {
+                const res = await fetch(`/api/inspection/${action}`, { method: 'POST' });
+                const data = await res.json();
+                
+                if (action === 'stop') {
+                    // Force UI update fast
+                    document.getElementById('status-badge').innerText = "Detenido";
+                    document.getElementById('btn-stop').style.display = 'none';
+                    document.getElementById('btn-start').style.display = 'block';
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                if (btn) {
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        async function sendNext() {
+            const btn = document.getElementById('btn-next');
+            btn.innerText = "⌛ ENVIANDO...";
+            btn.disabled = true;
+            await fetch('/api/inspection/next', { method: 'POST' });
+            setTimeout(() => {
+                btn.innerText = "🚀 PASO SIGUIENTE";
+                btn.disabled = false;
+                btn.style.display = 'none';
+            }, 1000);
+        }
+
+        async function clearData() {
+            if (!confirm("¿Estás seguro?\n\nEsto solo limpiará los logs y el esquema visual de esta pantalla.\nLa base de datos de empleos NO será borrada.")) return;
+            
+            const btn = document.getElementById('btn-clear');
+            btn.innerText = "⌛ LIMPIANDO...";
+            btn.disabled = true;
+            
+            try {
+                await fetch('/api/inspection/clear', { method: 'POST' });
+                // Clean UI locally too for immediate feedback
+                document.getElementById('schema-container').innerHTML = '<p style="color: #64748B;">Esperando escaneo...</p>';
+                document.getElementById('answers-container').innerText = 'Las respuestas aparecerán aquí...';
+                document.getElementById('traffic-in-container').innerText = '{}';
+                document.getElementById('traffic-out-container').innerText = '{}';
+                document.getElementById('empty-scan-alert').style.display = 'none';
+                document.getElementById('status-badge').innerText = "Listo";
+                
+            } catch (err) { console.error(err); }
+            
+            btn.innerText = "🧹 LIMPIAR VISTA";
+            btn.disabled = false;
+        }
+
+        // Iniciar conexión reactiva
+        initSSE();
+    </script>
+</body>
+</html>

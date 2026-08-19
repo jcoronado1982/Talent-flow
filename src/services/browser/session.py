@@ -21,13 +21,23 @@ class SessionManager:
         self.context = self._launch_context(headless)
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
         
+        # Apply Playwright Stealth
+        try:
+            from playwright_stealth import Stealth
+            Stealth().apply_stealth_sync(self.page)
+            print("   [Browser] 🥷 Playwright Stealth activado en la página principal.")
+        except ImportError:
+            print("   [Browser] ⚠️ playwright-stealth no está instalado. Ejecutando en modo normal.")
+        except Exception as e:
+            print(f"   [Browser] Error activando stealth: {e}")
+            
         if not self.guest_mode:
             self._inject_cookies()
 
     def _launch_context(self, headless):
         print(f"   [Browser] Launching with persistent profile: {self.user_data_path}")
         try:
-            return self.playwright.chromium.launch_persistent_context(
+            context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_path,
                 headless=headless,
                 executable_path="/usr/bin/google-chrome",
@@ -42,19 +52,64 @@ class SessionManager:
                 java_script_enabled=True,
                 timeout=20000 
             )
+            
+            # Anti-Messaging Injection (Total Suppression)
+            context.add_init_script("""
+                (() => {
+                    const style = document.createElement('style');
+                    style.innerHTML = `
+                        .msg-overlay-list-bubble, 
+                        .msg-overlay-conversation-bubble, 
+                        #msg-overlay,
+                        .msg-overlay-bubble-header,
+                        aside#msg-overlay {
+                            display: none !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
+                            height: 0 !important;
+                            width: 0 !important;
+                            opacity: 0 !important;
+                        }
+                    `;
+                    document.documentElement.appendChild(style);
+                    
+                    // Periodic cleanup for dynamic elements
+                    setInterval(() => {
+                        document.querySelectorAll('.msg-overlay-list-bubble, .msg-overlay-conversation-bubble, #msg-overlay').forEach(el => el.remove());
+                    }, 1000);
+                })()
+            """)
+            return context
         except Exception as e:
-            print(f"   [Browser] Primary launch failed: {e}. Falling back to temp profile.")
-            temp_dir = tempfile.mkdtemp(prefix="talentflow_temp_")
-            return self.playwright.chromium.launch_persistent_context(
-                user_data_dir=temp_dir,
-                headless=headless,
-                executable_path="/usr/bin/google-chrome",
-                args=[
-                    "--disable-blink-features=AutomationControlled"
-                ],
-                ignore_default_args=["--enable-automation"],
-                java_script_enabled=True
-            )
+            print(f"   [Browser] Primary launch failed ({e}). Retrying same profile with bundled Chromium...")
+            try:
+                context = self.playwright.chromium.launch_persistent_context(
+                    user_data_dir=self.user_data_path,
+                    headless=headless,
+                    viewport={"width": 1280, "height": 800},
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-infobars",
+                        "--no-sandbox",
+                        "--start-maximized"
+                    ],
+                    ignore_default_args=["--enable-automation", "--no-sandbox"],
+                    java_script_enabled=True,
+                    timeout=20000
+                )
+                return context
+            except Exception as e2:
+                print(f"   [Browser] Retry on persistent profile failed ({e2}). Falling back to temp profile.")
+                temp_dir = tempfile.mkdtemp(prefix="talentflow_temp_")
+                return self.playwright.chromium.launch_persistent_context(
+                    user_data_dir=temp_dir,
+                    headless=headless,
+                    args=[
+                        "--disable-blink-features=AutomationControlled"
+                    ],
+                    ignore_default_args=["--enable-automation"],
+                    java_script_enabled=True
+                )
 
     def _inject_cookies(self):
         # Check if we already have the critical cookie in our persistent profile

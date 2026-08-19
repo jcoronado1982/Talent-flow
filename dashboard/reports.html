@@ -23,7 +23,7 @@
         }
 
         .container {
-            max-width: 80%;
+            max-width: 98%;
             margin: 0 auto;
         }
 
@@ -70,9 +70,17 @@
         }
 
         .status-discarded {
-            color: #7f8c8d;
-            /* Grey */
+            color: #e74c3c;
+            /* Red for discarded */
+            opacity: 0.8;
             font-style: italic;
+        }
+
+        .status-matched {
+            color: #2ecc71;
+            /* Green for matched */
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(46, 204, 113, 0.3);
         }
 
         .status-processing {
@@ -109,15 +117,96 @@
             margin-bottom: 20px;
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
         }
 
         input,
-        select {
+        select,
+        button {
             padding: 10px;
             background: #252525;
             border: 1px solid #444;
             color: white;
             border-radius: 5px;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        /* Console styling for logs */
+        .log-console {
+            background: #0d0d0d;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #d1d1d1;
+            max-height: 300px;
+            overflow-y: auto;
+            line-height: 1.5;
+            margin-top: 10px;
+        }
+
+        .log-line {
+            border-bottom: 1px solid #222;
+            padding: 4px 0;
+        }
+
+        .log-timestamp {
+            color: #8E44AD;
+            margin-right: 10px;
+        }
+
+        .bulk-actions {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 5px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pagination-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+            padding: 10px;
+            background: #1a1a1a;
+            border-radius: 5px;
+            border: 1px solid #333;
+        }
+
+        .page-info {
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        .pagination-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .pagination-btn:disabled {
+            background: #444;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .selected-row {
+            background: rgba(142, 68, 173, 0.15) !important;
+            border-left: 3px solid var(--primary);
         }
     </style>
 </head>
@@ -125,7 +214,23 @@
 <body>
     <div class="container">
         <a href="/" class="btn-back">⬅ Volver al Dashboard</a>
-        <h1>📊 Reporte de Ofertas</h1>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
+            <h1>📊 Reporte de Ofertas</h1>
+            <div id="perfIndicator"
+                style="background:#2C3E50; border: 1px solid #444; padding:8px 15px; border-radius:20px; font-size:0.9em; display:flex; align-items:center; gap:12px;">
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="color:#f1c40f;">⚡ Carga:</span>
+                    <span id="procTimeValue" style="font-weight:bold; color:white;">0.0</span>
+                    <span style="color:#888; font-size:0.8em;">seg/min</span>
+                </div>
+                <div style="width:1px; height:15px; background:#444;"></div>
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="color:#3498db;">📦 Ritmo:</span>
+                    <span id="offersRateValue" style="font-weight:bold; color:white;">0.0</span>
+                    <span style="color:#888; font-size:0.8em;">ofertas/min</span>
+                </div>
+            </div>
+        </div>
 
         <div class="filter-bar">
             <input type="text" id="searchInput" placeholder="Buscar empresa o rol..." onkeyup="filterTable()">
@@ -145,17 +250,45 @@
                 <option value="On-site">On-site</option>
                 <option value="Unknown">Unknown</option>
             </select>
-            <button onclick="loadJobs()"
-                style="padding:10px; background:var(--primary); color:white; border:none; cursor:pointer; border-radius:5px;">🔄
+            <select id="typeFilter" onchange="filterTable()">
+                <option value="all">All Types</option>
+                <option value="Easy Apply">Easy Apply</option>
+                <option value="External">External</option>
+            </select>
+            <select id="langFilter" onchange="filterTable()">
+                <option value="all">Languages</option>
+                <option value="Spanish">Spanish</option>
+                <option value="English">English</option>
+            </select>
+            <button onclick="loadJobs()" style="background:var(--primary); border:none;">🔄
                 Actualizar</button>
-            <button onclick="clearReport()"
-                style="padding:10px; background:#c0392b; color:white; border:none; cursor:pointer; border-radius:5px; margin-left:auto;">🗑️
+            <button onclick="clearReport()" style="background:#c0392b; border:none; margin-left:auto;">🗑️
                 Eliminar Reporte</button>
+        </div>
+
+        <div class="bulk-actions" id="bulkActions">
+            <span><strong>Bulk Action:</strong> Mover <span id="selectedCount">0</span> seleccionados a</span>
+            <select id="bulkStatusSelect">
+                <option value="Discarded">Discarded</option>
+                <option value="Pending">Pending</option>
+                <option value="Matched">Matched</option>
+            </select>
+            <button onclick="applyBulkUpdate()" style="background:#27ae60; border:none; font-weight:bold;">Aplicar
+                Cambios</button>
+        </div>
+
+        <div class="pagination-bar" id="topPagination">
+            <button onclick="changePage(-1)" class="pagination-btn" id="prevBtn">⬅ Anterior</button>
+            <span class="page-info">Página <span id="currentPage">1</span> de <span id="totalPages">1</span> (<span
+                    id="totalResults">0</span> ofertas)</span>
+            <button onclick="changePage(1)" class="pagination-btn" id="nextBtn">Siguiente ➡</button>
         </div>
 
         <table>
             <thead>
                 <tr>
+                    <th style="width: 30px;"><input type="checkbox" id="selectAllCheckbox" onclick="toggleSelectAll()">
+                    </th>
                     <th style="width: 40px;">ID</th>
                     <th>MATCH</th>
                     <th>COMPANY</th>
@@ -163,16 +296,20 @@
                     <th>LOCATION</th>
                     <th>SKILLS</th>
                     <th>MODE</th>
+                    <th>TYPE</th>
+                    <th>LANG</th>
                     <th>DATE</th>
                     <th>RESUME</th>
                     <th>STATUS</th>
+                    <th>ACTIONS</th>
                 </tr>
             </thead>
             <tbody id="jobsTable">
                 <tr>
-                    <td colspan="9">Loading...</td>
+                    <td colspan="13">Loading...</td>
                 </tr>
             </tbody>
+        </table>
     </div>
 
     <!-- Requirements Modal -->
@@ -194,23 +331,37 @@
     <script>
         window.onerror = function (msg, url, line, col, error) {
             alert("⚠️ SYSTEM ERROR: " + msg + "\nLine: " + line);
-            document.getElementById('jobsTable').innerHTML = '<tr><td colspan="12" style="color:red">System Error: ' + msg + ' (Line ' + line + ')</td></tr>';
+            document.getElementById('jobsTable').innerHTML = '<tr><td colspan="14" style="color:red">System Error: ' + msg + ' (Line ' + line + ')</td></tr>';
             return false;
         };
 
-        let allJobs = [];
+        let currentPage = 1;
+        let totalPages = 1;
+        let pageSize = 100;
+        let currentPageJobs = [];
+        let selectedJobs = new Set();
+
         console.log("Script loaded. Calling loadJobs...");
 
         function renderTable(jobs) {
             const tbody = document.getElementById('jobsTable');
             if (jobs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12">No jobs found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="14">No jobs found.</td></tr>';
                 return;
             }
 
+            // Sync select all checkbox
+            const selectAllCheck = document.getElementById('selectAllCheckbox');
+            selectAllCheck.checked = (jobs.length > 0) && jobs.every(j => selectedJobs.has(j.id));
+
+            updateBulkActionsUI();
+
             tbody.innerHTML = jobs.map((job, index) => {
                 // External Link Logic
-                let statusHtml = `<span class="status-${(job.status || 'Pending').toLowerCase().split(' ')[0]}">${job.status || 'Pending'}</span>`;
+                let statusHtml = `<div><span class="status-${(job.status || 'Pending').toLowerCase().split(' ')[0]}">${job.status || 'Pending'}</span></div>`;
+                if (job.ai_model) {
+                    statusHtml += `<div style="font-size:0.75em; color:#888; margin-top:2px;">🤖 ${job.ai_model}</div>`;
+                }
                 if (job.external_link) {
                     statusHtml += ` <a href="${job.external_link}" target="_blank" title="Open External Application" style="text-decoration:none; font-size:1.2em;">🔗</a>`;
                 }
@@ -226,66 +377,166 @@
                     } catch (e) { }
                 }
 
+                const isChecked = selectedJobs.has(job.id) ? 'checked' : '';
+
                 return `
-                <tr onclick="showDetails(${index})" style="cursor:pointer;" title="Click to view details">
-                    <td style="font-family:monospace; color:var(--accent);">${job.id}</td>
-                    <td style="font-weight:bold; color:${job.match_score >= 80 ? '#27AE60' : job.match_score >= 40 ? '#F1C40F' : '#aaa'}">${job.match_score || 0}%</td>
-                    <td>${job.company || '-'}</td>
+                <tr style="cursor:pointer;" title="Click anywhere on the row to view details. Use checkbox to select." class="${isChecked ? 'selected-row' : ''}">
+                    <td onclick="event.stopPropagation()">
+                        <input type="checkbox" class="job-checkbox" value="${job.id}" ${isChecked} onchange="toggleJobSelection(${job.id}, this.checked)">
+                    </td>
+                    <td onclick="showDetails(${index})" style="font-family:monospace; color:var(--accent);">${job.id}</td>
+                    <td onclick="showDetails(${index})" style="font-weight:bold; color:${job.match_score >= 80 ? '#2ecc71' : job.match_score >= 50 ? '#f1c40f' : '#e74c3c'}">${job.match_score || 0}%</td>
+                    <td onclick="showDetails(${index})">${job.company || '-'}</td>
                     <td>${job.url ? `<a href="${job.url}" target="_blank" onclick="event.stopPropagation()" style="color:#3498db; text-decoration:none;">${job.role || 'Unknown'}</a>` : (job.role || 'Unknown')}</td>
-                    <td>${job.location || '-'}</td>
-                    <td style="font-size:0.85em; color:#ddd;">${job.skills || '-'}</td>
-                    <td><span style="font-size:0.85em; background:#333; padding:2px 6px; border-radius:4px;">${job.work_mode || '-'}</span></td>
-                    <td>${job.date_posted || job.date || '-'}</td>
-                    <td style="font-size:0.85em; color:#3498db;">${job.applied_resume ? job.applied_resume.split('/').pop() : '-'}</td>
-                    <td>${statusHtml}</td>
+                    <td onclick="showDetails(${index})">${job.location || '-'}</td>
+                    <td onclick="showDetails(${index})" style="font-size:0.85em; color:#ddd;">${job.skills || '-'}</td>
+                    <td onclick="showDetails(${index})"><span style="font-size:0.85em; background:#333; padding:2px 6px; border-radius:4px;">${job.work_mode || '-'}</span></td>
+                    <td onclick="showDetails(${index})">${job.apply_type === 'Easy Apply' ? '<span title="Easy Apply" style="color:#2ecc71; font-weight:bold;">⚡ Easy</span>' : (job.apply_type === 'External' ? '<span title="External" style="color:#3498db; font-weight:bold;">🌍 Ext.</span>' : '-')}</td>
+                    <td onclick="showDetails(${index})" style="font-size:0.85em; font-weight:bold; color:#f1c40f;">${job.language || '-'}</td>
+                    <td onclick="showDetails(${index})">${job.date_posted || job.date || '-'}</td>
+                    <td onclick="showDetails(${index})" style="font-size:0.8em; line-height:1.4;">
+                        <div title="CV Planeado" style="color:#aaa;">📂 ${job.applied_resume ? job.applied_resume.split('/').pop() : '-'}</div>
+                        ${job.uploaded_cv ? `<div title="CV Realmente subido" style="color:#2ecc71; margin-top:4px;">✅ ${job.uploaded_cv.split('/').pop()}</div>` : ''}
+                    </td>
+                    <td onclick="showDetails(${index})">${statusHtml}</td>
+                    <td onclick="event.stopPropagation()">
+                        <button onclick="reanalyzeJob(${job.id}, event)" id="re-btn-${job.id}" title="Re-evaluate with AI" style="background:#8E44AD; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:1.1em;">
+                            🔄
+                        </button>
+                    </td>
                 </tr>
             `}).join('');
         }
 
-        async function loadJobs() {
-            try {
-                // Show a subtle indicator that we are updating
-                const title = document.querySelector('h1');
-                const originalTitle = "📋 Reporte de Ofertas";
-                title.innerText = originalTitle + " (Actualizando...)";
+        function toggleJobSelection(jobId, isChecked) {
+            if (isChecked) {
+                selectedJobs.add(jobId);
+            } else {
+                selectedJobs.delete(jobId);
+                document.getElementById('selectAllCheckbox').checked = false; // Uncheck select all if one item is unchecked
+            }
+            updateBulkActionsUI();
+        }
 
-                const res = await fetch('/api/jobs');
-                if (!res.ok) throw new Error("HTTP " + res.status);
-                allJobs = await res.json();
+        function toggleSelectAll() {
+            const isChecked = document.getElementById('selectAllCheckbox').checked;
 
-                // Sort by match_score DESC
-                allJobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+            // Only toggle currently visible jobs on this page
+            currentPageJobs.forEach(job => {
+                if (isChecked) {
+                    selectedJobs.add(job.id);
+                } else {
+                    selectedJobs.delete(job.id);
+                }
+            });
 
-                // Re-apply current filters instead of resetting to all
-                filterTable();
+            // Re-render current page
+            renderTable(currentPageJobs);
+        }
 
-                title.innerText = originalTitle;
-            } catch (e) {
-                console.error("Background refresh error:", e);
-                // Don't alert() here as it breaks UX during auto-refresh
+        function updateBulkActionsUI() {
+            const bulkBar = document.getElementById('bulkActions');
+            const countSpan = document.getElementById('selectedCount');
+
+            countSpan.innerText = selectedJobs.size;
+            if (selectedJobs.size > 0) {
+                bulkBar.style.display = 'flex';
+            } else {
+                bulkBar.style.display = 'none';
             }
         }
 
-        let currentFilteredJobs = []; // To keep track for correct indexing
+        async function applyBulkUpdate() {
+            if (selectedJobs.size === 0) return;
+
+            const newStatus = document.getElementById('bulkStatusSelect').value;
+
+            if (!confirm(`¿Actualizar el estado de ${selectedJobs.size} oferta(s) a '${newStatus}'?`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/jobs/bulk_update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        job_ids: Array.from(selectedJobs),
+                        new_status: newStatus
+                    })
+                });
+
+                if (!res.ok) throw new Error("Bulk update failed");
+                const data = await res.json();
+
+                // Clear selection on success and reload
+                selectedJobs.clear();
+                document.getElementById('selectAllCheckbox').checked = false;
+                loadJobs(currentPage);
+
+            } catch (e) {
+                alert("❌ Error: " + e.message);
+            }
+        }
+
+        async function loadJobs(page = 1) {
+            try {
+                currentPage = page;
+                const title = document.querySelector('h1');
+                const originalTitle = "📊 Reporte de Ofertas";
+                title.innerText = originalTitle + " (Actualizando...)";
+
+                const q = document.getElementById('searchInput').value;
+                const status = document.getElementById('statusFilter').value;
+                const mode = document.getElementById('modeFilter').value;
+                const applyType = document.getElementById('typeFilter').value;
+                const lang = document.getElementById('langFilter').value;
+
+                let url = `/api/jobs?page=${page}&page_size=${pageSize}`;
+                if (q) url += `&q=${encodeURIComponent(q)}`;
+                if (status !== 'all') url += `&status=${status}`;
+                if (mode !== 'all') url += `&mode=${mode}`;
+                if (applyType !== 'all') url += `&apply_type=${applyType}`;
+                if (lang !== 'all') url += `&lang=${lang}`;
+
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const data = await res.json();
+
+                currentPageJobs = data.jobs;
+                totalPages = data.total_pages;
+                const totalResults = data.total;
+
+                // Sync UI
+                document.getElementById('currentPage').innerText = currentPage;
+                document.getElementById('totalPages').innerText = totalPages;
+                document.getElementById('totalResults').innerText = totalResults;
+                document.getElementById('prevBtn').disabled = currentPage <= 1;
+                document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+
+                renderTable(currentPageJobs);
+
+                title.innerText = originalTitle;
+            } catch (e) {
+                console.error("Load error:", e);
+            }
+        }
+
+        function changePage(delta) {
+            const next = currentPage + delta;
+            if (next >= 1 && next <= totalPages) {
+                loadJobs(next);
+            }
+        }
 
         function filterTable() {
-            const text = document.getElementById('searchInput').value.toLowerCase();
-            const status = document.getElementById('statusFilter').value;
-            const mode = document.getElementById('modeFilter').value;
-
-            currentFilteredJobs = allJobs.filter(job => {
-                const matchesText = (job.company || '').toLowerCase().includes(text) || (job.role || '').toLowerCase().includes(text);
-                const matchesStatus = status === 'all' || job.status === status;
-                const matchesMode = mode === 'all' || job.work_mode === mode;
-                return matchesText && matchesStatus && matchesMode;
-            });
-
-            renderTable(currentFilteredJobs);
+            // Server-side filtering: we reload from page 1
+            loadJobs(1);
         }
 
         function showDetails(index) {
-            const list = currentFilteredJobs.length > 0 ? currentFilteredJobs : allJobs;
-            const job = list[index];
+            const job = currentPageJobs[index];
             if (!job) return;
 
             document.getElementById('modalTitle').innerText = job.role;
@@ -311,8 +562,13 @@
                             </div>
                             
                             <div style="margin-bottom:15px;">
-                                <strong style="color:var(--accent);">Reason:</strong>
-                                <p style="margin:5px 0; color:#ddd; font-style:italic;">"${analysis.reason || '-'}"</p>
+                                <strong style="color:var(--accent);">Reasoning:</strong>
+                                <p style="margin:5px 0; color:#ddd; font-style:italic;">"${analysis.reasoning || analysis.reason || '-'}"</p>
+                            </div>
+
+                            <div style="margin-bottom:15px; background: #1a1a1a; padding: 10px; border-radius: 5px; border: 1px dashed #444;">
+                                <strong style="color:#f1c40f;">Justification:</strong>
+                                <p style="margin:5px 0; color:#ccc; font-size: 0.9em;">${analysis.score_breakdown?.justification || '-'}</p>
                             </div>
 
                             <div style="font-size:0.9em;">
@@ -335,10 +591,13 @@
                     <div>
                         <strong style="color:white; font-size:1.15em;">${job.company}</strong> 
                         &nbsp;•&nbsp; ${job.location} 
-                        &nbsp;•&nbsp; <span style="color:#E67E22;">${job.date_posted || job.date || 'No Date'}</span>
+                        &nbsp;•&nbsp; <span style="color:#E67E22;">🗓️ Publicado: ${job.date_posted || job.date || 'No Date'}</span>
                         <div style="margin-top:10px;">
                             ${job.work_mode && job.work_mode !== 'Unknown' ? `<span style="background:#333; padding:2px 8px; border-radius:4px; font-size:0.8em; border:1px solid #444;">${job.work_mode}</span> &nbsp;` : ''}
+                            ${job.apply_type === 'Easy Apply' ? `<span style="background:#2ecc71; color:black; padding:2px 8px; border-radius:4px; font-size:0.8em; font-weight:bold;">⚡ Easy Apply</span> &nbsp;` : (job.apply_type === 'External' ? `<span style="background:#3498db; color:white; padding:2px 8px; border-radius:4px; font-size:0.8em; font-weight:bold;">🌍 External</span> &nbsp;` : '')}
                             <span style="color:#aaa; font-size:0.9em;">Source: ${job.source}</span>
+                            <div style="color:#777; font-size:0.75em; margin-top:5px;">🔍 Escaneado por el bot: ${job.updated_at || job.created_at || 'Unknown'}</div>
+                            ${job.ai_model ? `<div style="color:#8E44AD; font-size:0.8em; margin-top:5px; font-weight:bold;">🤖 Procesado por: ${job.ai_model}</div>` : ''}
                         </div>
                     </div>
                     <div style="text-align:right; background:rgba(142, 68, 173, 0.1); padding:10px; border-radius:8px; border:1px solid var(--primary);">
@@ -348,9 +607,25 @@
                 </div>
                 <br>
                 <div style="background:#2C3E50; padding:10px; border-radius:5px; border-left:4px solid #3498db; margin-bottom:20px;">
-                    <strong style="color:#3498db;">📄 Resume Applied:</strong> <span style="color:#fff;">${job.applied_resume || 'None recorded'}</span>
+                    <strong style="color:#3498db;">📄 Resume Planned:</strong> <span style="color:#fff;">${job.applied_resume || 'None recorded'}</span>
+                    ${job.uploaded_cv ? `<br><strong style="color:#2ecc71;">✅ Actual Uploaded:</strong> <span style="color:#fff;">${job.uploaded_cv}</span>` : ''}
                 </div>
                 ${aiContent}
+                
+                ${job.error_log ? `
+                    <div style="margin-top:25px;">
+                        <h3 style="color:#e74c3c; border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:10px;">🛡️ Traza de Aplicación (Logs)</h3>
+                        <div class="log-console">
+                            ${job.error_log.trim().split('\n').map(line => {
+                const match = line.match(/^\[(.*?)\] (.*)/);
+                if (match) {
+                    return `<div class="log-line"><span class="log-timestamp">[${match[1]}]</span> ${match[2]}</div>`;
+                }
+                return `<div class="log-line">${line}</div>`;
+            }).join('')}
+                        </div>
+                    </div>
+                ` : ''}
             `;
 
             const rawText = job.raw_requirements || job.requirements || "No requirements text available.";
@@ -403,6 +678,43 @@
 
 
 
+        async function reanalyzeJob(jobId, event) {
+            if (event) event.stopPropagation();
+
+            const btn = document.getElementById(`re-btn-${jobId}`);
+            const originalHtml = btn.innerHTML;
+
+            if (btn.disabled) return;
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '...';
+                btn.style.opacity = '0.5';
+
+                const res = await fetch(`/api/jobs/${jobId}/reanalyze`, { method: 'POST' });
+                if (!res.ok) throw new Error("Analysis failed");
+                const data = await res.json();
+
+                // Success animation
+                btn.innerHTML = '✅';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }, 2000);
+
+                loadJobs(currentPage); // Refresh table preserving current page
+            } catch (e) {
+                alert("❌ Error: " + e.message);
+                btn.innerHTML = '❌';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }, 3000);
+            }
+        }
+
         async function clearReport() {
             if (!confirm("⚠️ ¿Estás seguro/a?\n\nEsto borrará PERMANENTEMENTE:\n1. Todas las ofertas de la base de datos.\n2. El historial de actividad.\n3. Los logs de auditoría.\n\nEl sistema quedará como nuevo.")) {
                 return;
@@ -413,6 +725,9 @@
                 if (!res.ok) throw new Error("Server Error");
 
                 alert("✅ Sistema reseteado correctamente.");
+                selectedJobs.clear();
+                document.getElementById('selectAllCheckbox').checked = false;
+                updateBulkActionsUI();
                 loadJobs(); // Refresh table (empty)
             } catch (e) {
                 alert("❌ Error al limpiar: " + e.message);
@@ -422,31 +737,64 @@
         // Initial load
         loadJobs();
 
-        // Intelligent Auto-refresh: 
         let lastStatus = null;
-        const refreshInterval = setInterval(async () => {
-            try {
-                const statusRes = await fetch('/status.json?t=' + Date.now());
-                const statusData = await statusRes.json();
-                const currentStatus = (statusData.status || '').toLowerCase();
+        let lastTotalJobs = null;
+        let lastUpdateTime = 0;
 
-                // If it's running, or if it JUST STOPPED, do a refresh
-                if (currentStatus.includes('running') || (lastStatus && lastStatus.includes('running') && !currentStatus.includes('running'))) {
-                    loadJobs();
-                    console.log("Auto-refresh triggered.");
-                }
+        // SSE Initialization for Real-Time Report Sync
+        function initSSE() {
+            const evtSource = new EventSource("/events");
 
-                lastStatus = currentStatus;
+            evtSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    const currentStatus = (data.status && data.status.status ? data.status.status : '').toLowerCase();
+                    const currentTotal = data.stats ? data.stats.total_jobs : 0;
+                    const currentUpdateTime = (data.status && data.status.last_updated) ? data.status.last_updated : Date.now();
 
-                // Cleanup title if not running
-                if (!currentStatus.includes('running')) {
+                    // Refresh if total jobs count changed, or status changed
+                    const countChanged = lastTotalJobs !== null && currentTotal !== lastTotalJobs;
+                    const statusChanged = lastStatus !== null && currentStatus !== lastStatus;
+
+                    if (countChanged || statusChanged || lastTotalJobs === null) {
+                        loadJobs(currentPage);
+                        console.log(`[Real-Time Sync] Actualizando reporte: Total=${currentTotal}, Status=${currentStatus}`);
+                        lastTotalJobs = currentTotal;
+                        lastStatus = currentStatus;
+                        lastUpdateTime = currentUpdateTime;
+                    }
+
+                    // Update Title State
                     const title = document.querySelector('h1');
-                    if (title) title.innerText = "📊 Reporte de Ofertas";
+                    if (title) {
+                        if (currentStatus.includes('running')) {
+                            if (!title.innerText.includes('⚙️')) {
+                                title.innerHTML = `📊 Reporte de Ofertas <span style="font-size:0.6em; color:var(--accent); animation: pulse 1.5s infinite;">⚙️ Evaluando con Gemini (${currentTotal} guardadas)...</span>`;
+                            }
+                        } else {
+                            title.innerHTML = `📊 Reporte de Ofertas <span style="font-size:0.6em; color:#2ecc71;">(${currentTotal} Ofertas)</span>`;
+                        }
+                    }
+                } catch (e) {
+                    console.error("SSE parse error:", e);
                 }
-            } catch (e) {
-                console.error("Status check error:", e);
+            };
+
+            evtSource.onerror = (err) => {
+                console.error("SSE Connection Failed, reconectando...", err);
+                evtSource.close();
+                setTimeout(initSSE, 3000);
+            };
+        }
+
+        // Auto-refresh interval (cada 3 segundos durante la búsqueda)
+        setInterval(() => {
+            if (lastStatus && lastStatus.includes('running')) {
+                loadJobs(currentPage);
             }
-        }, 5000);
+        }, 3000);
+
+        initSSE();
     </script>
 </body>
 

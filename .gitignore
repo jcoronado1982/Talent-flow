@@ -44,3 +44,14 @@ cookies.json
 *.csv
 debug_failure_*.html
 *.signal
+
+# Rust
+/target/
+*.bak
+
+# Runtime output (audit logs, DOM/screenshot forensics, ad-hoc scratch scripts)
+/debug/
+/logs/*
+!/logs/.gitkeep
+/scratch/
+.venv3.13/

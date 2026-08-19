@@ -1,0 +1,72 @@
+{
+  "agent_config": {
+    "file_extension": ".pdf",
+    "prefix": "CV",
+    "experience": "20",
+    "owner": "Jesus_Coronado",
+    "naming_format": "{prefix}_{exp}_{city}_{role}_{tech}_{lang}_{owner}{ext}"
+  },
+  "rules": {
+    "city_mapping": {
+      "bogota": "B",
+      "medellin": "M",
+      "__default__": "M"
+    },
+    "role_mapping": {
+      "leader_keywords": [
+        "lead",
+        "lider",
+        "l\u00edder",
+        "architect",
+        "arquitecto",
+        "manager",
+        "staff",
+        "principal",
+        "head",
+        "especialista",
+        "supervisor",
+        "coordinador",
+        "gerente",
+        "director",
+        "jefe"
+      ],
+      "codes": {
+        "leader": "L",
+        "developer": "D"
+      }
+    },
+    "tech_mapping": {
+      "J": [
+        "java",
+        "spring",
+        "hibernate",
+        "jvm",
+        "maven",
+        "jpa"
+      ],
+      "C": [
+        "c#",
+        ".net",
+        "dotnet",
+        "asp.net",
+        "azure",
+        "angular",
+        "wpf",
+        "mvvm"
+      ],
+      "P": [
+        "python",
+        "django",
+        "flask",
+        "fastapi",
+        "ai",
+        "machine learning",
+        "pandas"
+      ]
+    },
+    "language_mapping": {
+      "english": "EN",
+      "spanish": "ES"
+    }
+  }
+}

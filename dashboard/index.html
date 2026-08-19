@@ -5,228 +5,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
-    <style>
-        :root {
-            --primary: #8E44AD;
-            --secondary: #2C3E50;
-            --accent: #E67E22;
-            --bg: #121212;
-            --card-bg: #1E1E1E;
-            --text: #F0F0F0;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 80%;
-            margin: 0 auto;
-        }
-
-        h1 {
-            margin-bottom: 20px;
-            color: var(--primary);
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 10px;
-            border-left: 5px solid var(--accent);
-        }
-
-        .stat-value {
-            font-size: 2em;
-            font-weight: bold;
-        }
-
-        .stat-label {
-            color: #aaa;
-            font-size: 0.9em;
-        }
-
-        /* Progress Sections */
-        .section {
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .progress-bar {
-            background: #333;
-            height: 10px;
-            border-radius: 5px;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-
-        .progress-fill {
-            background: var(--primary);
-            height: 100%;
-            width: 0%;
-            transition: width 0.5s ease;
-        }
-
-        /* Matches */
-        .matches-list {
-            display: grid;
-            gap: 10px;
-        }
-
-        .match-item {
-            background: #252525;
-            padding: 10px;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .match-score {
-            font-weight: bold;
-            color: #27AE60;
-        }
-
-        /* Logs */
-        .console {
-            background: #000;
-            color: #0F0;
-            font-family: monospace;
-            padding: 15px;
-            border-radius: 5px;
-            height: 200px;
-            overflow-y: auto;
-            font-size: 1.3em;
-        }
-
-        .btn-stop {
-            background-color: #C0392B;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 1em;
-            transition: background 0.3s;
-        }
-
-        .btn-stop:hover {
-            background-color: #E74C3C;
-        }
-
-        .btn-stop:disabled {
-            background-color: #555;
-            cursor: not-allowed;
-        }
-    </style>
-    <style>
-        :root {
-            --primary: #8E44AD;
-            --success: #27ae60;
-            --danger: #c0392b;
-            --dark: #121212;
-            --light: #ecf0f1;
-        }
-
-        /* ... existing styles ... */
-        .btn-apply {
-            background-color: var(--success);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            /* Hidden by default */
-            margin-right: 10px;
-        }
-
-        .btn-apply:hover {
-            background-color: #2ecc71;
-        }
-
-        /* Interaction Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: none;
-            /* Hidden by default */
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            padding: 25px;
-            border-radius: 10px;
-            max-width: 500px;
-            width: 90%;
-            border: 2px solid var(--accent);
-            box-shadow: 0 0 20px rgba(230, 126, 34, 0.3);
-        }
-
-        .modal-question {
-            font-size: 1.2em;
-            margin-bottom: 20px;
-            font-weight: bold;
-        }
-
-        .modal-input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 20px;
-            background: #333;
-            border: 1px solid #555;
-            color: white;
-            border-radius: 5px;
-            font-size: 1em;
-        }
-
-        .modal-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-        }
-    </style>
+    <!-- Assets Separados -->
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
     <div class="container">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h1>🤖 Dashboard</h1>
-            <div>
-                <button id="searchBtn" class="btn-apply" onclick="startSearchProcess()">🚀 Iniciar Búsqueda</button>
-                <button id="applyBtn" class="btn-apply" onclick="startAutoApply()" style="background-color: #2980B9;">📄
-                    Auto Aplicar</button>
-                <a href="/reports" target="_blank" class="btn-apply"
-                    style="background-color: #8E44AD; text-decoration: none;">📊 Ver Reportes</a>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button id="searchBtn" class="btn-apply" onclick="startSearchProcess()">🔍 Iniciar Búsqueda</button>
+                    <button id="matchBtn" class="btn-apply btn-match" onclick="startMatchProcess()" disabled title="No hay trabajos pendientes de analizar">
+                        ⚡ Procesar Match
+                        <span id="matchPendingBadge" class="pending-badge" style="display:none;">0</span>
+                    </button>
+                    <button id="applyBtn" class="btn-apply" onclick="startAutoApply()" style="background-color: #2980B9;">📄 Auto Aplicar</button>
+                    <a href="/reports" target="_blank" class="btn-apply"
+                        style="background-color: #8E44AD; text-decoration: none;">📊 Ver Reportes</a>
+                </div>
+                <div id="lastUpdateContainer" style="font-size: 0.75em; color: #888; font-family: monospace;">
+                    🔄 Actualizado: <span id="lastUpdateTime" style="color: var(--accent);">—</span>
+                </div>
             </div>
         </div>
 
@@ -234,7 +34,7 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-value" id="totalMatches">0</div>
-                <div class="stat-label">Coincidencias (&gt;40%)</div>
+                <div class="stat-label">Coincidencias (&gt;30%)</div>
             </div>
             <div class="stat-card" style="border-color: var(--primary);">
                 <div class="stat-value" id="currentRole">---</div>
@@ -272,6 +72,28 @@
             </div>
         </div>
 
+        <!-- Resume Tracking -->
+        <div class="section" id="resumeSection" style="display: none;">
+            <div class="section-header">
+                <span style="color: var(--accent);">📄 Estado de CV</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 10px;">
+                <div>
+                    <div style="font-size: 0.7em; color: #888; text-transform: uppercase;">📤 Propuesto (Debe enviar)
+                    </div>
+                    <div id="targetResume"
+                        style="font-family: monospace; font-size: 0.8em; color: #3498DB; background: #000; padding: 5px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        -</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.7em; color: #888; text-transform: uppercase;">✅ Enviado (Envió)</div>
+                    <div id="actualResume"
+                        style="font-family: monospace; font-size: 0.8em; color: #27ae60; background: #000; padding: 5px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        -</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Recent Matches -->
         <div class="section">
             <h3>🔥 Últimas Coincidencias</h3>
@@ -283,11 +105,8 @@
         <!-- Console -->
         <div class="section">
             <h3>🖥️ Log de Actividad</h3>
-            <div class="console" id="consoleLog">
-                > Esperando conexión con monitor...
-            </div>
+            <div class="console" id="consoleLog">> Esperando conexión...</div>
         </div>
-    </div>
     </div>
 
     <!-- Intervention Modal -->
@@ -295,237 +114,18 @@
         <div class="modal-content">
             <h2 style="margin-top:0; color:var(--accent);">⚠️ Ayuda Requerida</h2>
             <div id="modalQuestion" class="modal-question">Cargando pregunta...</div>
-
             <label style="display:block; margin-bottom:5px; color:#aaa;">Tu Respuesta:</label>
             <textarea id="modalAnswer" class="modal-input" rows="3"
                 placeholder="Escribe la respuesta correcta aquí..."></textarea>
-
             <div class="modal-actions">
-                <!-- <button onclick="skipInteraction()" style="background:transparent; border:1px solid #555; color:#aaa; padding:8px 15px; border-radius:5px; cursor:pointer;">Saltar</button> -->
                 <button onclick="submitInteraction()" class="btn-apply" style="background: var(--primary);">Enviar
                     Respuesta</button>
             </div>
         </div>
     </div>
 
-    <script>
-        let isActionPending = false;
-
-        async function startSearchProcess() {
-            if (isActionPending) return;
-            if (!confirm("¿Iniciar el proceso completo de Búsqueda y Análisis?")) return;
-
-            const searchBtn = document.getElementById('searchBtn');
-            const applyBtn = document.getElementById('applyBtn');
-
-            isActionPending = true;
-
-            // Disable BOTH buttons to prevent confusion
-            searchBtn.disabled = true;
-            applyBtn.disabled = true;
-
-            searchBtn.innerText = "Iniciando...";
-
-            try {
-                await fetch('/search', { method: 'POST' });
-
-                // Optimistic UI Update: Switch to Stop State immediately
-                searchBtn.innerText = "🛑 Detener Búsqueda";
-                searchBtn.onclick = stopSearch;
-                searchBtn.className = "btn-stop";
-                searchBtn.disabled = false;
-                applyBtn.style.display = 'none';
-
-                // No blocking alert needed, the UI change is feedback enough
-            } catch (e) {
-                alert("Error al iniciar búsqueda: " + e);
-                // Revert if error
-                searchBtn.innerText = "🚀 Iniciar Búsqueda";
-                searchBtn.className = "btn-apply";
-                searchBtn.disabled = false;
-            } finally {
-                isActionPending = false;
-            }
-        }
-
-        async function startAutoApply() {
-            if (isActionPending) return;
-            if (!confirm("¿Iniciar Auto-Apply con el último reporte generado?")) return;
-
-            const searchBtn = document.getElementById('searchBtn');
-            const applyBtn = document.getElementById('applyBtn');
-
-            isActionPending = true;
-
-            // Disable BOTH buttons
-            searchBtn.disabled = true;
-            applyBtn.disabled = true;
-
-            applyBtn.innerText = "Iniciando...";
-            try {
-                await fetch('/apply', { method: 'POST' });
-                alert("Se ha iniciado el proceso de Auto-Apply.");
-            } catch (e) {
-                alert("Error al iniciar Auto-Apply: " + e);
-            } finally {
-                isActionPending = false;
-            }
-        }
-
-        async function stopSearch() {
-            if (!confirm("¿Seguro que deseas detener la búsqueda? Se guardará el reporte actual.")) return;
-            const btn = document.getElementById('searchBtn');
-            isActionPending = true;
-            btn.disabled = true;
-            btn.innerText = "Deteniendo...";
-
-            try {
-                await fetch('/stop', { method: 'POST' });
-                alert("Se ha enviado la señal de parada.");
-            } catch (e) {
-                alert("Error al enviar señal: " + e);
-            } finally {
-                isActionPending = false;
-            }
-        }
-
-        async function updateDashboard() {
-            if (isActionPending) return;
-
-            try {
-                // 1. Fetch Real-time Progress (status.json)
-                const statusResponse = await fetch('status.json?t=' + Date.now());
-                const statusData = await statusResponse.json();
-
-                // 2. Fetch Database Truth (api/stats)
-                const statsResponse = await fetch('/api/stats');
-                const statsData = await statsResponse.json();
-
-                // Button Visibility Toggle Logic
-                const searchBtn = document.getElementById('searchBtn');
-                const applyBtn = document.getElementById('applyBtn');
-
-                const isRunning = statusData.status && statusData.status.toLowerCase().includes('running');
-                const isClosing = statusData.status && statusData.status.toLowerCase().includes('closing');
-
-                if (isClosing) {
-                    searchBtn.innerText = "⏳ Cerrando (Terminando Match...)";
-                    searchBtn.disabled = true;
-                    applyBtn.style.display = 'none';
-                    searchBtn.className = "btn-stop";
-                } else if (isRunning) {
-                    searchBtn.innerText = "🛑 Detener Búsqueda";
-                    searchBtn.onclick = stopSearch;
-                    searchBtn.className = "btn-stop";
-                    searchBtn.disabled = false;
-                    applyBtn.style.display = 'none';
-                } else {
-                    searchBtn.innerText = "🚀 Iniciar Búsqueda";
-                    searchBtn.onclick = startSearchProcess;
-                    searchBtn.className = "btn-apply";
-                    searchBtn.disabled = false;
-                    applyBtn.style.display = 'inline-block';
-                    applyBtn.disabled = false;
-                }
-
-                // Stats Cards (Using DB Truth)
-                document.getElementById('totalMatches').innerText = statsData.total_matches || 0;
-                document.getElementById('currentRole').innerText = statusData.current_role || "Ready";
-                document.getElementById('currentLocation').innerText = statusData.current_location || "-";
-                
-                // For processing count, we use the statusData if running, else 0
-                document.getElementById('processingCount').innerText = statusData.processing_count || 0;
-
-                // Global Progress (status.json)
-                const globalPct = (statusData.current_combination_index / Math.max(statusData.total_combinations, 1)) * 100;
-                document.getElementById('globalProgressBar').style.width = globalPct + '%';
-                document.getElementById('globalProgressText').innerText =
-                    `${statusData.current_combination_index} / ${statusData.total_combinations}`;
-
-                // Batch Progress (status.json)
-                const batchPct = (statusData.current_job_index / Math.max(statusData.jobs_in_current_batch, 1)) * 100;
-                document.getElementById('batchProgressBar').style.width = batchPct + '%';
-                document.getElementById('batchProgressText').innerText =
-                    statusData.jobs_in_current_batch > 0 ? `Oferta ${statusData.current_job_index} de ${statusData.jobs_in_current_batch}` : "Escaneando...";
-
-                // Recent Matches (Using DB Truth)
-                const matchesList = document.getElementById('matchesList');
-                const recentMatches = statsData.recent_matches || [];
-                
-                if (recentMatches.length > 0) {
-                    matchesList.innerHTML = recentMatches.map(m => `
-                        <div class="match-item">
-                            <div>
-                                <strong>${m.company}</strong> (${m.location})<br>
-                                <small>${m.role || 'Unknown'}</small> • <small style="color: #F1C40F;">${m.date || 'Unknown'}</small><br>
-                                <small>${m.work_mode}</small> • <small style="color: #aaa; font-family: monospace;">[${m.created_at ? m.created_at.split(' ')[1] : '-'}]</small>
-                            </div>
-                            <div style="text-align:right;">
-                                <div class="match-score" style="color:#27ae60;">${m.match_score}% (DS)</div>
-                                <div style="font-family:monospace; font-size:0.8em; color:var(--accent);">ID: ${m.id}</div>
-                            </div>
-                        </div>
-                    `).join('');
-                } else {
-                    matchesList.innerHTML = '<div class="match-item">Sin coincidencias recientes</div>';
-                }
-
-                // Logs (status.json)
-                const consoleDiv = document.getElementById('consoleLog');
-                consoleDiv.innerHTML = (statusData.logs || []).join('<br>> ');
-
-            } catch (e) {
-                console.log("Error updating dashboard:", e);
-            }
-        }
-
-        async function checkInteraction() {
-            try {
-                const response = await fetch('/check_interaction');
-                const data = await response.json();
-
-                const modal = document.getElementById('interventionModal');
-
-                if (data.status === 'waiting_for_user') {
-                    // Show Modal
-                    modal.style.display = 'flex';
-                    document.getElementById('modalQuestion').innerText = data.question || "Pregunta desconocida";
-
-                    // Focus input if not already focused
-                    if (document.activeElement !== document.getElementById('modalAnswer')) {
-                        // document.getElementById('modalAnswer').focus(); 
-                    }
-                } else {
-                    // Hide Modal
-                    modal.style.display = 'none';
-                    document.getElementById('modalAnswer').value = ''; // Clear answer
-                }
-            } catch (e) {
-                console.log("Error checking interaction:", e);
-            }
-        }
-
-        async function submitInteraction() {
-            const answer = document.getElementById('modalAnswer').value;
-            if (!answer) return alert("Por favor escribe una respuesta.");
-
-            try {
-                await fetch('/submit_answer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ answer: answer })
-                });
-                // Hide immediately for better UX (checking loop will confirm)
-                document.getElementById('interventionModal').style.display = 'none';
-            } catch (e) {
-                alert("Error enviando respuesta: " + e);
-            }
-        }
-
-        setInterval(updateDashboard, 1000);
-        setInterval(checkInteraction, 1500); // Check for help requests every 1.5s
-        updateDashboard();
-    </script>
+    <!-- Scripts Separados -->
+    <script src="/static/js/app.js"></script>
 </body>
 
 </html>

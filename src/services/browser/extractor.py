@@ -44,7 +44,7 @@ class DataExtractor:
         return None
 
     def extract_details(self):
-        details = {"description": "", "date": "Unknown", "company": "Unknown", "location": "Unknown", "work_mode": "Unknown"}
+        details = {"description": "", "date": "Unknown", "company": "Unknown", "location": "Unknown", "work_mode": "Unknown", "apply_type": "Unknown"}
         try:
              # Title
              title_el = self.page.query_selector(".job-details-jobs-unified-top-card__job-title h1") or \
@@ -106,6 +106,14 @@ class DataExtractor:
                           self.page.query_selector(".job-card-container__company-name") or \
                           self.page.query_selector(".jobs-unified-top-card__company-name")
              if company_el: details["company"] = company_el.inner_text().strip()
+
+             # Apply Type
+             apply_btn = self.page.query_selector(".jobs-apply-button") or self.page.query_selector("button.jobs-apply-button--top-card")
+             details["apply_type"] = "External"
+             if apply_btn:
+                 btn_text = (apply_btn.inner_text() or "").lower()
+                 if "easy apply" in btn_text or "sencilla" in btn_text:
+                     details["apply_type"] = "Easy Apply"
 
              # Description
              selectors = [".jobs-description__content", "#job-details", ".show-more-less-html__markup", "article", ".description"]

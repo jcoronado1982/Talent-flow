@@ -1,0 +1,34 @@
+[package]
+name = "talentflow"
+version = "0.1.0"
+edition = "2021"
+authors = ["Jesus Coronado <email.coronado@gmail.com>"]
+description = "TalentFlow - 100% Native Rust AI Job Search & Dashboard Engine"
+
+[[bin]]
+name = "talentflow"
+path = "src_rust/main.rs"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full", "process", "time"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json"] }
+clap = { version = "4.5", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+async-stream = "0.3"
+futures-util = "0.3"
+url = "2.5"
+dotenvy = "0.15"
+aes = "0.8"
+cbc = "0.1"
+pbkdf2 = { version = "0.12", features = ["hmac"] }
+sha1 = { version = "0.10", default-features = false }
+chromiumoxide = { version = "0.9.1", features = ["native-tls", "zip0"] }

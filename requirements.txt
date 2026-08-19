@@ -4,3 +4,7 @@ pyyaml
 browser-cookie3
 pandas
 openpyxl
+playwright-stealth
+vllm
+sentence-transformers
+mcp

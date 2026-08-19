@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-primary: #8E44AD;
+  --color-secondary: #2C3E50;
+  --color-accent: #E67E22;
+  --color-brand-bg: #121212;
+  --color-card-bg: #1E1E1E;
+  --color-success: #27ae60;
+}
+
+:root {
+  background-color: var(--color-brand-bg);
+  color: #F0F0F0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}

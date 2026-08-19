@@ -1,0 +1,245 @@
+69|Senior Machine Learning Engineer
+Senior Machine Learning Engineer with verification|Acerca del empleo
+
+Estamos en búsqueda de Senior Machine Learning Engineer que resida en Bogotá (Colombia), con inglés conversacional avanzado para sumarse a proyectos de rubro BPO
+
+
+
+
+DESCRIPCIÓN DEL ROL:
+
+Qué harás
+
+Colaborar con equipos multidisciplinarios para identificar, estructurar y priorizar casos de uso y aplicaciones de machine learning.
+Desarrollar, implementar y optimizar algoritmos y modelos de machine learning para resolver problemas empresariales complejos y mejorar las capacidades de los productos.
+Evaluar y validar el rendimiento de los modelos de machine learning utilizando métricas y metodologías adecuadas.
+Implementar y mantener pipelines de datos robustas para el entrenamiento, validación e implementación de modelos.
+Mantenerse al día con los últimos avances en el campo del machine learning e identificar de manera proactiva oportunidades para aprovechar nuevas técnicas y tecnologías.
+Brindar orientación técnica y tutoría a los miembros júnior del equipo, fomentando una cultura de aprendizaje continuo e innovación.
+Colaborar con los stakeholders para comunicar de manera efectiva el valor y las limitaciones de las soluciones de machine learning y gestionar las expectativas.
+Colaborar con los Product Owners y otros interesados para definir los requisitos del proyecto y alinear las soluciones de machine learning con las metas del negocio.
+Monitorear el rendimiento y el progreso del equipo, brindando retroalimentación periódica y abordando cualquier problema que pueda surgir para garantizar un equipo motivado y de alto rendimiento.
+
+
+
+
+¿Qué necesitamos de ti?
+
+Licenciatura o Maestría en Ciencias de la Computación, Ingeniería, Estadística o un campo afín.
+Más de 6 años de experiencia en machine learning, ciencia de datos o un campo afín.
+Dominio de frameworks de machine learning (p. ej., TensorFlow, PyTorch) y lenguajes de programación (p.ej., Python, R).
+Sólido entendimiento de los algoritmos, principios y mejores prácticas de machine learning.
+Experiencia con plataformas de machine learning basadas en la nube (p. ej., AWS, Azure, GCP) es un plus.
+Debe tener experiencia trabajando en un entorno Ágil.
+Excelentes habilidades de comunicación verbal y escrita.
+Excelentes habilidades de trabajo en equipo.
+Capacidad para gestionar múltiples prioridades competidoras simultáneamente.
+Capacidad para pensar estratégicamente y ejecutar de manera metódica.
+Capacidad para trabajar en un entorno de ritmo acelerado donde se desee la innovación continua.
+
+
+
+
+SOBRE LA PROPUESTA
+
+Rango salarial: a convenir
+Tipo de contratación: Contractor USD.
+Duración del contrato: Indefinido.
+Horario/ Zona horaria: COL.
+Modalidad de trabajo: on-site los primeros dos meses y luego una/dos veces por semana en Teusaquillo.
+Ubicación de las oficinas: Teusaquillo.
+75|Software Engineer (Remote)
+Software Engineer (Remote)|Acerca del empleo
+
+Role: Software Engineer (Remote)
+Location: Remote (Work from Anywhere)
+Job Type: Contract
+Payout: $100 - $150/hour
+
+
+
+
+Role Overview:
+
+We are hiring for one of our clients, seeking a Senior Software Engineer to work on a contract basis. The role focuses on building and maintaining scalable software systems to support platform operations. The position requires expertise in full-stack development and cloud infrastructure management.
+
+
+
+
+Key Responsibilities:
+
+• Design, develop, and deploy high-performance software solutions for platform services.
+
+• Collaborate with cross-functional teams to integrate systems and optimize performance.
+
+• Lead architectural decisions to ensure scalability, reliability, and security.
+
+• Write clean, maintainable code and conduct code reviews for junior engineers.
+
+• Troubleshoot and resolve complex technical issues in production environments.
+
+
+
+
+Required Skills & Qualifications:
+
+• 5+ years of experience in software engineering with proficiency in programming languages such as Python, Java, or Go.
+
+• Strong background in building and deploying microservices on cloud platforms like AWS, GCP, or Azure.
+
+• Experience with containerization and orchestration tools such as Docker and Kubernetes.
+
+• Expertise in databases, including SQL and NoSQL, with a focus on performance optimization.
+
+• Familiarity with CI/CD pipelines and infrastructure-as-code tools like Terraform or Ansible.
+
+• Knowledge of distributed systems and experience with caching mechanisms.
+
+• Ability to debug and profile applications to identify bottlenecks and inefficiencies.
+
+• Experience working in Agile or Scrum environments.
+
+
+
+
+More About the Opportunity:
+
+This role offers a unique opportunity to work with a global leader in the Software Development | Technology, Information and Internet | IT Services and IT Consulting industry, contributing to the enhancement of our platform’s core infrastructure. The project involves developing new features to improve scalability and user experience for a high-traffic service.
+
+
+
+
+Equal Opportunity Employer:
+
+We hire based on skills and expertise. All qualified candidates are welcome regardless of background, experience, or prior employment history. Applications are reviewed solely on demonstrated technical ability and qualifications.
+
+
+
+
+Apply Now!
+82|SQL Developer (Remote)
+SQL Developer (Remote)|Acerca del empleo
+
+Role: SQL Developer (Remote)
+Location: Remote (Work from Anywhere)
+Job Type: Contract
+Payout: $25 - $60/hour
+
+
+
+
+Role Overview:
+
+We are hiring for one of our clients, seeking a SQL Developer to work on a contract basis. The role involves designing, developing, and maintaining SQL-based solutions to support data-driven decision-making. You will collaborate with cross-functional teams to optimize database performance and ensure data integrity.
+
+
+
+
+Key Responsibilities:
+
+• Design, write, and optimize complex SQL queries to extract, transform, and load data efficiently.
+
+• Develop and maintain stored procedures, functions, and triggers to support business applications.
+
+• Collaborate with data analysts and engineers to ensure accurate and timely data delivery.
+
+• Troubleshoot and resolve database performance issues to enhance system reliability.
+
+• Document database schemas, data models, and query logic for team reference.
+
+
+
+
+Required Skills & Qualifications:
+
+• Proficiency in SQL with experience in query optimization and performance tuning.
+
+• Hands-on experience with database design, indexing, and partitioning strategies.
+
+• Familiarity with transactional and analytical database systems (e.g., PostgreSQL, MySQL, SQL Server).
+
+• Ability to write clean, maintainable, and scalable SQL code.
+
+• Experience with version control systems, such as Git, for database schema changes.
+
+
+
+
+More About the Opportunity:
+
+This role offers a unique opportunity to work with a global leader in the Software Development and Data Infrastructure and Analytics industries, contributing to scalable data solutions that drive business insights. The contract includes flexible hours and the ability to work from anywhere.
+
+
+
+
+Equal Opportunity Employer:
+
+We hire based on skills and expertise. All qualified candidates are welcome regardless of background, experience, or prior employment history. Applications are reviewed solely on demonstrated technical ability and qualifications.
+
+
+
+
+Apply Now!
+85|Senior Software Engineer
+Senior Software Engineer|Acerca del empleo
+
+Role Title: Senior Software Engineer
+
+
+
+
+Role Type: Contractor (~15 hrs a week)
+
+
+
+
+Location: Remote
+
+
+
+
+micro1 is selecting expert Senior Software Engineers to support a customer’s innovative project. In this role, you'll apply your expertise to help train next-generation AI systems. Your work will shape how models learn, reason, and perform through high-quality, real-world input. No prior experience in AI is required — your domain knowledge is what matters.
+
+
+
+
+As an expert you will be creating Reinforcement Learning Environments which test and AI model's ability to solve complex software engineering problems related to fixing code, creating features, refactoring code and optimizing performance. You will be tasked with creating a reproducible environment and golden reference solution for the problem.
+
+
+
+
+Scope of Work
+
+Contribute expert-level code samples, debugging strategies, and development insights in Python3, Java, Rust, Go, C++, or TypeScript.
+Analyze, troubleshoot, and resolve complex software defects and performance bottlenecks in diverse codebases.
+Implement robust new features, ensuring scalability, maintainability, and adherence to software best practices.
+Refactor and optimize legacy code to improve clarity, efficiency, and long-term reliability.
+Document technical reasoning, solution approaches, and code decisions to enhance AI training data quality.
+Review and validate peer-contributed code and technical submissions for accuracy and clarity.
+
+
+
+
+Preferred Qualifications
+
+Significant hands-on expertise in at least one of the following: Python3, Java, Rust, Go, C++, or TypeScript.
+Deep understanding of algorithms, data structures, and software engineering principles.
+Proven ability to debug complex systems, resolve bugs, and deliver effective optimizations.
+Experience with large codebase refactoring and legacy system modernization.
+Track record of delivering high-impact features from conception through delivery within cross-functional projects.
+Strong documentation and communication skills to articulate technical concepts clearly.
+Interest in or curiosity about AI and its technical challenges (previous AI experience not required).
+
+
+
+
+Compensation Structure
+
+Compensation is output-based; experts are paid per task that meets the project specifications. The time required to complete work may vary depending on the expert’s experience and workflow. Minimum submission requirements apply. Experts must submit a minimum of tasks per week.
+
+
+
+
+Start Timeline & Availability
+
+We typically fill roles within 48 hours and are looking for experts ready to jump in right away. If selected, we expect you to start your first tasks within 24–48 hours of completing onboarding.

@@ -22,6 +22,14 @@ class SearchMonitor:
             "recent_matches": [],
             "logs": [],
             "status": "Ready",
+            "target_resume": "-",
+            "actual_resume": "-",
+            "diagnostics": {
+                "active": False,
+                "schema": [],
+                "answers": {},
+                "last_event": ""
+            },
             "last_updated": 0
         }
         
@@ -50,10 +58,23 @@ class SearchMonitor:
     def log(self, message):
         """Add a log message."""
         timestamp = time.strftime("%H:%M:%S")
-        print(f"[{timestamp}] {message}") # Print to console for audit visibility
+        full_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 1. Console Output
+        print(f"[{timestamp}] {message}") 
+        
+        # 2. Persistent File Output
+        log_file = "dashboard/activity.log"
+        try:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{full_timestamp}] {message}\n")
+        except Exception as e:
+            print(f"Monitor Log File Error: {e}")
+
+        # 3. UI Buffer (Last 20)
         with self.lock:
             self.state["logs"].insert(0, f"[{timestamp}] {message}")
-            self.state["logs"] = self.state["logs"][:20] # Keep last 20
+            self.state["logs"] = self.state["logs"][:20]
             self._save_unsafe()
 
     def add_match(self, job_data, score):
@@ -73,15 +94,33 @@ class SearchMonitor:
             self.state["total_matches"] += 1
             self._save_unsafe()
 
+    def push_inspection(self, schema=None, answers=None, traffic_in=None, traffic_out=None, event_name="Update"):
+        """Pushes real-time form diagnostics and raw traffic to the UI.
+        If a parameter is None, the previous value is preserved.
+        """
+        with self.lock:
+            diag = self.state.get("diagnostics", {})
+            self.state["diagnostics"] = {
+                "active": True,
+                "schema": schema if schema is not None else diag.get("schema", []),
+                "answers": answers if answers is not None else diag.get("answers", {}),
+                "traffic_in": traffic_in if traffic_in is not None else diag.get("traffic_in"),
+                "traffic_out": traffic_out if traffic_out is not None else diag.get("traffic_out"),
+                "last_event": event_name,
+                "timestamp": time.time()
+            }
+            # Force save even if not master for diagnostics (special case)
+            self._save_unsafe(force=True)
+
     def save(self):
         with self.lock:
             self._save_unsafe()
 
-    def _save_unsafe(self):
+    def _save_unsafe(self, force=False):
         # AUTHORITY CHECK: Only the Master process is allowed to write to disk.
         # Subordinates can keep state in memory for their own logic if needed,
         # but they must NOT touch the shared status.json.
-        if os.environ.get("MONITOR_MASTER") != "true":
+        if not force and os.environ.get("MONITOR_MASTER") != "true":
             return
             
         self.state["last_updated"] = time.time()

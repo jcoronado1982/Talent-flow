@@ -28,7 +28,7 @@ def nuke_zombies():
     
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
-            if proc.pid == current_pid: continue
+            if proc.pid == current_pid or proc.pid == os.getppid(): continue
             
             cmd = " ".join(proc.info['cmdline'] or [])
             if any(t in cmd for t in targets) and "dashboard/server.py" not in cmd:
@@ -45,3 +45,23 @@ def nuke_zombies():
     if count > 0:
         print(f"✅ [Cleanup] Eliminated {count} ghost processes.")
         time.sleep(1) # Wait for OS to reclaim
+
+def rotate_files(directory, pattern, max_files=10):
+    """Keep only the latest N files matching a pattern in a directory."""
+    try:
+        if not os.path.exists(directory):
+            return
+            
+        import glob
+        files = sorted(glob.glob(os.path.join(directory, pattern)), key=os.path.getmtime)
+        
+        if len(files) > max_files:
+            to_delete = files[:-max_files]
+            for f in to_delete:
+                try:
+                    os.remove(f)
+                except:
+                    pass
+            print(f"🧹 [Cleanup] Rotated {len(to_delete)} old debug files in {directory}")
+    except Exception as e:
+        print(f"⚠️ [Cleanup] Error rotating files: {e}")

@@ -1,23 +1,16 @@
-from src.app.bots.search.manager import SearchBotManager
+import sys
 
-# --- CONFIGURACIÓN DE PRODUCCIÓN / PRUEBA ---
-# ¿Cuántas ofertas buscar por categoría? (25 para pruebas, 400 para buscar TODO)
-LIMIT = 100 
+print("\n" + "="*60)
+print(" 🚨 ALERTA CRÍTICA DE ARQUITECTURA 🚨")
+print("="*60)
+print("Este proyecto ha sido 100% migrado a RUST NATIVO.")
+print("La ejecución de scripts en Python ha sido BLOQUEADA")
+print("por seguridad para prevenir el comportamiento de 'bot ciego'")
+print("y proteger tu cuenta de LinkedIn.")
+print("\nPor favor, ejecuta el bot usando el nuevo motor seguro en Rust:")
+print("  cargo run -- step1-auth --profile user_data_safe")
+print("  cargo run -- dashboard")
+print("  cargo run -- apply")
+print("="*60 + "\n")
 
-# ¿Buscar solo la primera categoría (cargo/ubicación) o todas las configuradas?
-# True = Solo la primera | False = Todas
-SINGLE_CATEGORY = False 
-# ¿Solo re-analizar las ofertas existentes o buscar nuevas?
-# True = Solo re-analizar (sin abrir navegador) | False = Buscar y Analizar
-RE_ANALYZE_ONLY = False
-# --------------------------------------------
-
-if __name__ == "__main__":
-    # Modo Reclutamiento Completo (Con IA y Aplicación automática)
-    bot = SearchBotManager()
-    bot.run(
-        job_limit=LIMIT, 
-        single_combo_only=SINGLE_CATEGORY, 
-        skip_processor=False,
-        skip_collector=RE_ANALYZE_ONLY
-    )
+sys.exit(1)

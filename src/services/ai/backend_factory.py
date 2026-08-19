@@ -7,39 +7,40 @@ except ImportError:
     GeminiBrowserClient = None
 
 try:
-    from src.services.ai.local_client import OllamaClient
+    from src.services.ai.local_client import LocalLLMClient
 except ImportError:
-    OllamaClient = None
+    LocalLLMClient = None
+
+try:
+    from src.services.ai.wasp_client import WaspLLMClient
+except ImportError:
+    WaspLLMClient = None
+
+try:
+    from src.services.ai.wasp_mcp_client import WaspMCPClient
+except ImportError:
+    WaspMCPClient = None
 
 class AIBackendFactory:
     @staticmethod
     def get_backend(creds, cookies_dict):
-        provider = Settings.AI_PROVIDER
+        provider = Settings.get_ai_provider()
         print(f"[Brain] ⚙️ AI Provider configured to: '{provider.upper()}'")
 
-        # --- OPTION A: LOCAL AI (OLLAMA) ---
+        # --- OPTION A: LOCAL AI (Generic OpenAI-Compatible) ---
         if provider == "local":
-            if OllamaClient:
-                print("[Brain] Connecting to Local AI (Ollama)...")
+            if LocalLLMClient:
+                print(f"[Brain] Connecting to Local AI @ {Settings.get_local_url()}...")
                 try:
-                    import requests
-                    resp = requests.get("http://localhost:8000/v1/models", timeout=1)
-                    if resp.status_code == 200:
-                        print("[Brain] 🏎️ Local GPU (vLLM) detected. Using DeepSeek R1 14B AWQ.")
-                        return OllamaClient(model_name="casperhansen/deepseek-r1-distill-qwen-14b-awq")
-                    else:
-                        print("[Brain] ⚠️ Ollama service found but returned non-200.")
-                except Exception:
-                    print("[Brain] ❌ Ollama NOT reachable. Please run 'ollama serve'.")
+                    return LocalLLMClient(
+                        model_name=Settings.get_local_model(),
+                        base_url=Settings.get_local_url()
+                    )
+                except Exception as e:
+                    print(f"[Brain] ❌ Local LLM Connection failed: {e}")
             else:
-                print("[Brain] ❌ OllamaClient class not imported.")
+                print("[Brain] ❌ LocalLLMClient class not imported.")
             
-            # If user explicitly wanted local and it failed, we warn deeply but DO NOT fallback automatically
-            # to respect the "Switch" decision, UNLESS we want to be nice. 
-            # For this request, user implies strict switch ("si quiero cambiar... cambio el parametro").
-            # But to avoid breaking app, we returns None or maybe fallback if critical?
-            # Let's return None to force user to fix local if they selected local.
-            print("[Brain] ⚠️ Strict Mode: Local AI failed and provider='local'. Returning None.")
             return None
 
         # --- OPTION B: CLOUD AI (GEMINI) ---
@@ -55,12 +56,31 @@ class AIBackendFactory:
                     print(f"[Brain] ✅ API Key found ({key[:5]}...). Testing Native Backend...")
                     genai.configure(api_key=key)
                     # Use flash-2.0 or whatever is standard
-                    print(f"[Brain] 🤖 Using Model: {Settings.GEMINI_MODEL}")
-                    model = genai.GenerativeModel(Settings.GEMINI_MODEL)
+                    model_name = Settings.get_gemini_model()
+                    print(f"[Brain] 🤖 Using Model: {model_name}")
+                    model = genai.GenerativeModel(model_name)
                     return model
                 else:
                     print("[Brain] ❌ No Gemini API Key found in Environment or Credentials.")
             except Exception as e:
                 print(f"[Brain] Native Backend test/load failed: {e}")
+
+        # --- OPTION C: WASP AGENT ---
+        elif provider == "wasp":
+            if WaspLLMClient:
+                print(f"[Brain] Connecting to Wasp Agent @ {Settings.get_wasp_url()}...")
+                return WaspLLMClient()
+            else:
+                print("[Brain] ❌ WaspLLMClient class not imported.")
+            return None
+
+        # --- OPTION D: WASP MCP ---
+        elif provider == "wasp-mcp":
+            if WaspMCPClient:
+                print(f"[Brain] Connecting to Wasp Agent via MCP...")
+                return WaspMCPClient()
+            else:
+                print("[Brain] ❌ WaspMCPClient class not imported.")
+            return None
 
         return None

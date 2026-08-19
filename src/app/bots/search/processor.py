@@ -16,7 +16,168 @@ class FatalAIError(Exception):
     """Exception to signal that AI service is permanently unavailable (quota/auth)."""
     pass
 
+def detect_language_heuristic(text):
+    """Simple keyword-based language detection as safety fallback."""
+    if not text: return "Spanish"
+    text_lower = text.lower()
+    es_k = ["responsabilidades", "requisitos", "experiencia", "conocimientos", "ofrecemos", "vacante", "ubicación", "empresa", "educación"]
+    en_k = ["responsibilities", "requirements", "experience", "knowledge", "offer", "vacancy", "location", "company", "education"]
+    es_score = sum(2 for k in es_k if k in text_lower)
+    en_score = sum(2 for k in en_k if k in text_lower)
+    return "English" if en_score > es_score else "Spanish"
+
+# Comprehensive keyword list for heuristic skill extraction
+_KNOWN_TECH_SKILLS = [
+    # Backend Languages
+    "C#", ".NET Core", "ASP.NET", ".NET", "Java", "Spring Boot", "Spring",
+    "Python", "Django", "Flask", "FastAPI", "Node.js", "Go", "Golang",
+    "Rust", "C++", "PHP", "Laravel", "Ruby", "Rails", "Kotlin", "Scala",
+    # Frontend
+    "Angular", "React", "Vue", "Next.js", "Nuxt", "TypeScript", "JavaScript",
+    "HTML", "CSS", "SASS", "SCSS", "Ionic", "jQuery", "Svelte",
+    # Mobile
+    "Flutter", "React Native", "Android", "iOS", "Swift",
+    # Databases
+    "SQL Server", "PostgreSQL", "MySQL", "MariaDB", "MongoDB", "Redis",
+    "Cassandra", "DynamoDB", "Elasticsearch", "Oracle", "SQLite", "T-SQL",
+    "Vector DB", "Pinecone", "Weaviate",
+    # DevOps / Cloud
+    "Docker", "Kubernetes", "AWS", "Azure", "GCP", "Terraform", "CI/CD",
+    "Jenkins", "GitHub Actions", "GitLab CI", "Ansible", "Linux",
+    # AI / Data
+    "PyTorch", "TensorFlow", "LLM", "LLMs", "OpenAI", "Langchain", "RAG",
+    "CUDA", "Vertex AI", "N8N", "Pandas", "NumPy", "Spark",
+    # Integration / Messaging
+    "RabbitMQ", "Kafka", "GraphQL", "REST", "gRPC", "Microservices", "Websockets",
+    # Tools
+    "Git", "Jira", "Scrum", "Agile", "Salesforce", "SAP", "Power BI",
+]
+
+def extract_skills_heuristic(text):
+    """
+    MANDATORY FALLBACK: Scans raw job description text for known technology keywords.
+    Returns a comma-separated string of detected skills, or 'N/A' if nothing found.
+    This guarantees the 'skills' column is NEVER left as '-' for any job.
+    """
+    if not text:
+        return "N/A"
+    found = []
+    text_lower = text.lower()
+    for skill in _KNOWN_TECH_SKILLS:
+        # Use word-boundary-safe check: skill not already added and present as a word
+        skill_lower = skill.lower()
+        if skill_lower in text_lower and skill not in found:
+            found.append(skill)
+    return ", ".join(found) if found else "N/A"
+
+def normalize_analysis(data: dict, raw_job_text: str = "") -> dict:
+    """
+    SCHEMA RESCUE LAYER.
+    When the local LLM ignores our mandatory JSON schema and returns a free-form
+    response, this function translates it into our standard format so no job is
+    wrongly scored 0.
+
+    Priority: if 'match_percentage' already exists and is > 0, pass through.
+    Otherwise, probe all known alternative key patterns from common LLM outputs.
+    """
+    if not data:
+        return data
+
+    # --- 1. If the schema is already correct, just return it ---
+    if data.get('match_percentage', 0) > 0:
+        return data
+
+    normalized = dict(data)
+
+    # --- 2. Rescue match_percentage from common alternative keys ---
+    # We probe multiple candidates used by different LLMs when they ignore our schema.
+    score_candidates = [
+        data.get('match_score'),
+        data.get('score'),
+        data.get('similarity_score'),
+        data.get('fit_score'),
+        data.get('overall_score'),
+        data.get('compatibility_score'),
+        data.get('match'),
+    ]
+    # Also probe nested keys like {"analysis": {"score": 75}} as many models group their JSON output.
+    for nested_key in ['analysis', 'assessment', 'evaluation', 'result']:
+        nested = data.get(nested_key)
+        if isinstance(nested, dict):
+            score_candidates += [
+                nested.get('match_percentage'),
+                nested.get('match_score'),
+                nested.get('score'),
+                nested.get('fit_score'),
+            ]
+    
+    for candidate in score_candidates:
+        if candidate is not None:
+            try:
+                val = float(str(candidate).replace('%', '').strip())
+                # Handle 0.0-1.0 range → convert to 0-100
+                if 0 < val <= 1.0:
+                    val = val * 100
+                normalized['match_percentage'] = int(val)
+                break
+            except:
+                continue
+
+    # --- 3. Rescue verdict from recommendation / recommendation fields ---
+    if not normalized.get('verdict'):
+        rec = (
+            str(data.get('recommendation', ''))
+            + str(data.get('suggested_action', ''))
+            + str(data.get('final_assessment', ''))
+            + str(data.get('overall_recommendation', ''))
+        ).lower()
+        # Check nested
+        for nested_key in ['analysis', 'assessment', 'evaluation', 'result', 'recommendation']:
+            nested = data.get(nested_key)
+            if isinstance(nested, dict):
+                rec += str(nested.get('recommendation', '')).lower()
+                rec += str(nested.get('suggested_action', '')).lower()
+
+        if any(k in rec for k in ['strong hire', 'hire', 'apply', 'yes', 'proceed', 'good fit', 'excellent', 'recommend']):
+            normalized['verdict'] = 'APPLY'
+            # If model said "Strong Hire" but gave no score, give a reasonable score
+            if normalized.get('match_percentage', 0) == 0:
+                normalized['match_percentage'] = 60
+        elif any(k in rec for k in ['defer', 'consider', 'maybe', 'partial']):
+            normalized['verdict'] = 'DEFER'
+            if normalized.get('match_percentage', 0) == 0:
+                normalized['match_percentage'] = 35
+        else:
+            normalized['verdict'] = 'REJECT'
+
+    # --- 4. Rescue mandatory_skills from skill_gap_analysis / required_skills ---
+    if not normalized.get('mandatory_skills'):
+        skill_sources = []
+        
+        # Check skill_gap_analysis.required_skills (list)
+        skill_gap = data.get('skill_gap_analysis') or data.get('skill_gap') or {}
+        if isinstance(skill_gap, dict):
+            rs = skill_gap.get('required_skills') or skill_gap.get('missing_skills')
+            if isinstance(rs, list):
+                skill_sources = [str(s) for s in rs if isinstance(s, str)]
+        
+        # Check top-level required_skills
+        if not skill_sources:
+            rs = data.get('required_skills')
+            if isinstance(rs, list):
+                skill_sources = [str(s) for s in rs if isinstance(s, str)]
+
+        if skill_sources:
+            normalized['mandatory_skills'] = ", ".join(skill_sources)
+        elif raw_job_text:
+            # Final fallback: heuristic scan
+            normalized['mandatory_skills'] = extract_skills_heuristic(raw_job_text)
+
+    return normalized
+
+
 def execute_job_analysis(job):
+
     """
     Standalone worker function for ProcessPoolExecutor.
     Must be top-level to be pickleable.
@@ -113,8 +274,12 @@ def execute_job_analysis(job):
             if ai_date and (job_update.get('date') == 'Unknown' or not job_update.get('date')):
                 job_update['date'] = ai_date
             
+            job_update['language'] = analysis.get('language_detected')
+            if job_update['language'] in [None, 'Unknown', 'Other']:
+                job_update['language'] = detect_language_heuristic(job['requirements'])
+            
             # Update status
-            if match_score >= 30: 
+            if match_score >= 40: 
                 new_status = 'Matched'
             else: 
                 new_status = 'Discarded'
@@ -125,7 +290,7 @@ def execute_job_analysis(job):
                 with open(_debug_log, "a") as f: f.write(f"[{time.strftime('%H:%M:%S')}] {job_tag} Finished. Status: {new_status} ({match_score}%)\n")
             except: pass
 
-            if match_score >= 30:
+            if match_score >= 40:
                 monitor.log(f"✅ MATCH: {company} ({match_score}%)")
                 audit.log("MATCHED", company=company, role=job['role'], details=f"Score: {match_score}%", url=job['url'])
             else:
@@ -156,6 +321,7 @@ def execute_worker_lifecycle(api_key, results_queue):
     from src.services.storage import database as db
     from src.services.ai.client import JobAnalyzer
     from src.audit import AuditLogger
+    from src.agents.resume_manager import ResumeManagerAgent
     
     _debug_log = "dashboard/processor_debug.log"
     pid = os.getpid()
@@ -164,6 +330,8 @@ def execute_worker_lifecycle(api_key, results_queue):
     # NO MONITOR in worker - we report via queue to avoid race conditions
     brain = JobAnalyzer(api_key=api_key)
     audit = AuditLogger()
+    resume_agent = ResumeManagerAgent()
+
     
     idle_start_time = time.time()
     idle_timeout = 120 # 2 minutes for workers to release resources
@@ -196,49 +364,140 @@ def execute_worker_lifecycle(api_key, results_queue):
             with open(_debug_log, "a") as f: f.write(f"[{time.strftime('%H:%M:%S')}] [Worker {pid}] -> Taking job [{company}] (ID: {job_id})\n")
             
             try:
-                # Analyze
-                prompt = f"PUBLICATION DATE: {job.get('date_posted', 'Unknown')}\n\n{job['requirements']}"
-                analysis = brain.analyze(prompt)
+                job_description_text = job.get('requirements', '')
+
+
+                # ============================================================
+                # 🧠 ETAPA 2: ANÁLISIS PROFUNDO POR LLM (solo para candidatos semánticos)
+                # ============================================================
+                # Analyze with structured context + previous skills if any
+                prev_skills = job.get('skills', '-')
+                prompt = (
+                    f"ROLE: {job.get('role', 'Unknown')}\n"
+                    f"LOCATION: {job.get('location', 'Unknown')}\n"
+                    f"PREVIOUS MANDATORY SKILLS: {prev_skills if prev_skills != '-' else 'None Yet'}\n"
+                    f"JOB DESCRIPTION:\n{job_description_text}"
+                )
                 
-                if analysis:
+                # ⏱️ MEASURE START
+                start_time = time.time()
+                analysis_result = brain.analyze(prompt)
+                duration = time.time() - start_time
+                # ⏱️ MEASURE END
+                
+                # Default update object with diagnostic data
+                job_update = dict(job)
+                job_update['raw_prompt'] = analysis_result.get('raw_prompt') if analysis_result else None
+                job_update['raw_analysis'] = analysis_result.get('raw_response') if analysis_result else None
+                job_update['processing_time'] = round(duration, 2)
+                job_update['ai_model'] = analysis_result.get('ai_model', 'Unknown') # 🤖 Extract AI Model Name directly from result
+
+                analysis_data = analysis_result.get('data') if analysis_result else None
+                
+                if analysis_data:
+                    # 🔧 SCHEMA RESCUE: If LLM returned its own format, normalize it to our schema
+                    analysis_data = normalize_analysis(analysis_data, raw_job_text=job.get('requirements', ''))
+                    
                     try:
-                        match_score = int(float(analysis.get('match_percentage', 0)))
+                        match_score = int(float(analysis_data.get('match_percentage', 0)))
                     except:
                         match_score = 0
 
-                    job_update = dict(job)
-                    job_update['analysis'] = analysis
-                    job_update['skills'] = analysis.get('mandatory_skills', '-')
+                    job_update['analysis'] = analysis_data
+                    
+                    # Robust Skill Extraction: Try primary key then fallbacks
+                    skills = analysis_data.get('mandatory_skills')
+                    
+                    if not skills or str(skills).strip() in ['-', 'null', 'None', '']:
+                        # Fallback 1: Check in 'assessment' (some models return a different schema)
+                        assessment = analysis_data.get('assessment', {})
+                        if isinstance(assessment, dict):
+                            skills = assessment.get('mandatory_skills')
+                        
+                        # Fallback 2: Join 'strengths' if available as a list
+                        if not skills and 'strengths' in analysis_data:
+                            s_list = analysis_data.get('strengths')
+                            if isinstance(s_list, list):
+                                skills = ", ".join(s_list)
+                        
+                        # Fallback 3 (MANDATORY): Heuristic scan of raw job description.
+                        # This MUST always produce a non-empty result for auditing purposes.
+                        # Applies to ALL jobs — especially DISCARDED ones where AI may skip skill extraction.
+                        if not skills or str(skills).strip() in ['-', 'null', 'None', '']:
+                            skills = extract_skills_heuristic(job.get('requirements', ''))
+                    
+                    job_update['skills'] = str(skills) if skills else 'N/A'
+
                     
                     # Smart Correction
-                    ai_mode = analysis.get('work_mode_detected')
+                    ai_mode = analysis_data.get('work_mode_detected')
                     if ai_mode and ai_mode != 'Unknown':
                         job_update['work_mode'] = ai_mode
+                    
+                    job_update['language'] = analysis_data.get('language_detected')
+                    if job_update['language'] in [None, 'Unknown', 'Other']:
+                        job_update['language'] = detect_language_heuristic(job['requirements'])
+                    
+                    # ai_model already set above from result
+                    
+                    new_status = 'Matched' if match_score >= 50 else 'Discarded'
+                    
+                    # Determine applied resume via deterministic business rules
+                    if match_score >= 50:
+                        cv_input = {
+                            "ROLE":     job.get('role', ''),
+                            "LOCATION": analysis_data.get('location_detected', job.get('location', '')),
+                            "SKILLS":   analysis_data.get('mandatory_skills', ''),
+                            "LANG":     analysis_data.get('language_detected', 'Spanish'),
+                        }
+                        job_update['applied_resume'] = resume_agent.get_resume_filename(cv_input)
+                    else:
+                        job_update['applied_resume'] = None
 
                     db.save_job(job_update)
-                    new_status = 'Matched' if match_score >= 30 else 'Discarded'
                     db.update_job_status(job_id, new_status)
                     
-                    if match_score >= 30:
+                    if match_score >= 50:
                         results_queue.put({
                             'type': 'match',
                             'job_data': job_update,
                             'score': match_score
                         })
-                        results_queue.put({'type': 'log', 'message': f"✅ MATCH: {company} ({match_score}%)"})
-                        audit.log("MATCHED", company=company, role=job['role'], details=f"Score: {match_score}%", url=job['url'])
+                        results_queue.put({'type': 'log', 'message': f"✅ MATCH: {company} ({match_score}%) in {duration:.1f}s"})
+                        audit.log("MATCHED", company=company, role=job['role'], details=f"Score: {match_score}% | Time: {duration:.1f}s", url=job['url'])
                     else:
-                        audit.log("DISCARDED", company=company, role=job['role'], reason="Low Match Score", details=f"Score: {match_score}%", url=job['url'])
+                        audit.log("DISCARDED", company=company, role=job['role'], reason="Low Match Score", details=f"Score: {match_score}% | Time: {duration:.1f}s", url=job['url'])
                         
-                    with open(_debug_log, "a") as f: f.write(f"[{time.strftime('%H:%M:%S')}] [Worker {pid}] -> Finished job (ID: {job_id})\n")
+                    with open(_debug_log, "a") as f: f.write(f"[{time.strftime('%H:%M:%S')}] [Worker {pid}] -> Finished job {company} (ID: {job_id}) in {duration:.2f}s\n")
                 else:
-                    db.update_job_status(job_id, "Failed")
-                    audit.log("FAIL", company=company, role=job['role'], reason="Analysis Failure", details="Empty JSON response", url=job['url'])
+                    # Even if parsing failed, save the raw data for analysis in the dashboard
+                    error_detail = "AI Analysis returned empty or invalid JSON."
+                    raw_resp = analysis_result.get('raw_response') if analysis_result else "No response"
+                    if raw_resp:
+                        error_detail += f"\nRaw Response Snippet: {str(raw_resp)[:200]}"
+                    
+                    db.save_job(job_update) 
+                    db.update_job_status(job_id, "Failed", error=error_detail)
+                    audit.log("FAIL", company=company, role=job['role'], reason="Analysis Failure", details=error_detail, url=job['url'])
                     
             except Exception as e:
-                 results_queue.put({'type': 'log', 'message': f"❌ [Worker {pid}] Error: {e}"})
+                 import traceback
+                 error_msg = f"❌ [Worker {pid}] Error: {e}\n{traceback.format_exc()}"
+                 results_queue.put({'type': 'log', 'message': error_msg})
+                 with open(_debug_log, "a") as f: f.write(f"[{time.strftime('%H:%M:%S')}] {error_msg}\n")
+                 
+                 # Ensure prompt and error hit the DB so UI can show the failure
+                 failed_job_update = dict(job)
+                 try:
+                     failed_job_update['raw_prompt'] = brain.prompts.get_analysis_prompt(prompt)
+                 except:
+                     failed_job_update['raw_prompt'] = prompt
+                 failed_job_update['raw_analysis'] = f"CRITICAL ERROR:\n{error_msg}"
+                 
+                 db.save_job(failed_job_update)
                  db.update_job_status(job_id, "Failed")
                  
+
             # Continue picking jobs even if STOP_SIGNAL is on (finishing pendings)
             continue 
             
@@ -253,7 +512,7 @@ class JobProcessor:
     def __init__(self, monitor):
         self.monitor = monitor
         self.api_key = os.environ.get("GEMINI_API_KEY") 
-        self.max_concurrent_workers = 10 # Scaled up for Gemini 3 Flash (Cloud API)
+        self.max_concurrent_workers = Settings.get_max_workers()
 
     def process_continuous(self, stop_event, results_queue):
         """

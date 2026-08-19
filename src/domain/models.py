@@ -9,6 +9,8 @@ class ApplicationStatus(Enum):
     FAILED = "Failed"
     MANUAL = "Manual"
     SKIPPED = "Skipped"
+    MATCHED = "Matched"
+    DISCARDED = "Discarded"
 
 @dataclass
 class JobConfig:
@@ -26,6 +28,7 @@ class Job:
     location: str = "Unknown"
     work_mode: str = "Unknown"
     date_posted: str = "Unknown"
+    language: str = "Unknown"
     source: str = "Unknown"
     raw_requirements: str = ""
     match_score: int = 0
@@ -33,6 +36,7 @@ class Job:
     analysis: Dict[str, Any] = field(default_factory=dict)
     status: ApplicationStatus = ApplicationStatus.PENDING
     applied_resume: Optional[str] = None
+    language: Optional[str] = None
     created_at: Optional[datetime] = None
     
     def to_dict(self):

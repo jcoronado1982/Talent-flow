@@ -1,11 +1,13 @@
 import time
+import os
+from src.domain.interfaces import IJobScraper
 from .heuristics import FIND_JOB_LIST_JS
 from .session import SessionManager
 from .interaction import InteractionHandler
 from .extractor import DataExtractor
 from .scanners import SearchScanner
 
-class JobSearchBrowser:
+class JobSearchBrowser(IJobScraper):
     def __init__(self, headless=False, user_data_dir="user_data_auth", chrome_profile=None):
         self.session = SessionManager(headless=headless, user_data_dir=user_data_dir, chrome_profile=chrome_profile)
         self.page = self.session.page
@@ -102,12 +104,24 @@ class JobSearchBrowser:
                     
                     # Auto-Dump DOM for debugging (User Request)
                     try:
-                        timestamp = int(time.time())
-                        dump_path = f"debug_failure_{timestamp}.html"
-                        with open(dump_path, "w") as f:
-                            f.write(self.page.content())
-                        print(f"   📸 [DEBUG] DOM Dump saved to: {dump_path}")
-                    except: pass
+                        # Only attempt if page is not closed
+                        if self.page and not self.page.is_closed():
+                            content = self.page.content()
+                            if content:
+                                timestamp = int(time.time())
+                                debug_dir = "debug"
+                                if not os.path.exists(debug_dir):
+                                    os.makedirs(debug_dir)
+                                    
+                                dump_path = os.path.join(debug_dir, f"debug_failure_{timestamp}.html")
+                                with open(dump_path, "w") as f:
+                                    f.write(content)
+                                print(f"   📸 [DEBUG] DOM Dump saved to: {dump_path}")
+                                
+                                from src.utils.cleanup import rotate_files
+                                rotate_files(debug_dir, "debug_failure_*.html", max_files=5)
+                    except Exception as dump_err:
+                        print(f"   ⚠️ [DEBUG] Could not save DOM dump: {dump_err}")
 
                     if attempt < 2:
                         wait_time = (attempt + 1) * 5

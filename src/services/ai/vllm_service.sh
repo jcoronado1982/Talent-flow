@@ -4,7 +4,7 @@
 
 # Configuration
 MODEL="casperhansen/deepseek-r1-distill-qwen-14b-awq"
-PORT=8000
+PORT=8005
 GPU_UTIL=0.80
 MAX_LEN=4096
 export HF_HUB_OFFLINE=1
