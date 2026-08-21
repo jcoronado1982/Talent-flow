@@ -402,8 +402,13 @@ pub async fn run_agent(
                 let confirmed = super::dom::text_visible_on_page(page, "application submitted").await
                     || super::dom::text_visible_on_page(page, "postulación enviada").await
                     || super::dom::text_visible_on_page(page, "thank you for applying").await
-                    || super::dom::text_visible_on_page(page, "solicitud enviada").await;
+                    || super::dom::text_visible_on_page(page, "solicitud enviada").await
+                    || super::dom::text_visible_on_page(page, "candidatura enviada").await
+                    || super::dom::text_visible_on_page(page, "your application was sent").await
+                    || super::dom::text_visible_on_page(page, "tu solicitud fue enviada").await;
                 if confirmed {
+                    println!("      🎉 [Agente] Postulación confirmada: {}. Manteniendo en pantalla 5s...", reason);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                     return Ok(AgentOutcome::Submitted(reason.clone()));
                 }
                 println!("      ⚠️ [Agente] Dijo 'done' pero la página no confirma el envío; continúa.");

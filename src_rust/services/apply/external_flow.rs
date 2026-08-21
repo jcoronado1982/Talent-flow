@@ -195,6 +195,8 @@ pub async fn handle_external_application(
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 if check_success(page).await {
                     println!("      🎉 [External] ¡Postulación externa completada y confirmada con éxito!");
+                    println!("      👁️ [Pausa de Visibilidad] Manteniendo mensaje de éxito por 5s...");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     let _ = db.update_job_status(ctx.id, &applied_update(ctx).error("Postulación enviada en portal externo exitosamente."));
                     return Ok(FlowResult::Submitted);
                 }
@@ -204,6 +206,8 @@ pub async fn handle_external_application(
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                 if check_success(page).await {
                     println!("      🎉 [External] ¡Postulación externa completada y confirmada!");
+                    println!("      👁️ [Pausa de Visibilidad] Manteniendo mensaje de éxito por 5s...");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     let _ = db.update_job_status(ctx.id, &applied_update(ctx).error("Postulación enviada en portal externo exitosamente."));
                     return Ok(FlowResult::Submitted);
                 }

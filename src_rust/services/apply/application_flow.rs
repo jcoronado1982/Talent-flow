@@ -236,22 +236,61 @@ pub async fn handle_application_flow(
 }
 
 /// After clicking something that looked like the final action, don't just trust it —
-/// look for the site's own confirmation, and fall back to reloading the original job
-/// page if nothing is immediately visible.
+/// poll for the site's own confirmation modal and keep it visible so the human user can see it.
 async fn finalize_after_click(page: &Page, db: &DatabaseRepository, ctx: &JobContext) -> FlowResult {
-    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
-    let immediate_confirmation = dom::text_visible_on_page(page, "application sent").await
-        || dom::text_visible_on_page(page, "solicitud enviada").await
-        || dom::text_visible_on_page(page, "your application was sent").await
-        || dom::text_visible_on_page(page, "aplicación enviada").await;
+    println!("   ⏳ Esperando confirmación de envío por parte de LinkedIn...");
+    
+    // 1. Sondeo adaptativo de hasta 6s para dar tiempo a la animación y respuesta de red
+    let mut immediate_confirmation = false;
+    let start_wait = std::time::Instant::now();
+    while start_wait.elapsed() < std::time::Duration::from_secs(6) {
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        if dom::text_visible_on_page(page, "application sent").await
+            || dom::text_visible_on_page(page, "solicitud enviada").await
+            || dom::text_visible_on_page(page, "your application was sent").await
+            || dom::text_visible_on_page(page, "aplicación enviada").await
+            || dom::text_visible_on_page(page, "candidatura enviada").await
+            || dom::text_visible_on_page(page, "postulación enviada").await
+            || dom::text_visible_on_page(page, "sua candidatura foi enviada").await
+            || dom::text_visible_on_page(page, "application submitted").await
+            || dom::text_visible_on_page(page, "thank you for applying").await
+            || dom::text_visible_on_page(page, "gracias por postularte").await
+            || dom::text_visible_on_page(page, "obrigado por se candidatar").await
+        {
+            immediate_confirmation = true;
+            break;
+        }
+    }
 
     if immediate_confirmation {
-        println!("   ✨ [Humano] Confirmación detectada. Presionando 'Hecho' para cerrar el modal...");
+        let resume = ctx.actual_resume.clone().unwrap_or_else(|| ctx.target_resume.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default());
+        println!("   🎉 [CONFIRMACIÓN VISIBLE] ¡Tu solicitud fue enviada con éxito a '{}'! (CV: {})", ctx.company, resume);
+        println!("   👁️ [Pausa de Visibilidad] Manteniendo la pantalla de confirmación 5s para que puedas verla...");
+
+        crate::services::audit::log_audit_event(
+            "PASO_5_APPLY_SUPERVISOR",
+            &format!("Confirmación Inmediata de Envío: {} @ {}", ctx.role, ctx.company),
+            "OK",
+            "APPLICATION_CONFIRMED_MODAL",
+            &format!("LinkedIn mostró la pantalla de confirmación exitosa. CV: '{}'", resume),
+            None,
+            None,
+            "Postulación certificada.",
+            "Confirmación verificada en el modal de LinkedIn."
+        );
+
+        // Pausa visible de 5 segundos para que el usuario humano la vea con calma en pantalla
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        println!("   ✨ [Humano] Cerrando modal de confirmación tras validación visual...");
         cleanup_modal(page).await;
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
         let _ = db.update_job_status(ctx.id, &applied_update(ctx).error("Confirmado: mensaje de éxito visible tras el clic."));
         return FlowResult::Submitted;
     }
 
+    println!("   ⏳ Confirmación no detectada en el modal tras 6s. Verificando estado en la página principal de la vacante...");
     verify_against_job_page(page, db, ctx).await
 }
 
@@ -265,19 +304,24 @@ async fn verify_against_job_page(page: &Page, db: &DatabaseRepository, ctx: &Job
         let _ = db.update_job_status(ctx.id, &JobStatusUpdate::new("Manual").error("No se pudo recargar la oferta para verificar el resultado."));
         return FlowResult::Manual;
     }
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
 
     // Deliberately specific phrases only — a bare "applied" is too generic and risks a
     // false-positive "Submitted" verdict (e.g. "filters applied" elsewhere on the page).
     let confirmed = dom::text_visible_on_page(page, "application submitted").await
         || dom::text_visible_on_page(page, "postulación enviada").await
         || dom::text_visible_on_page(page, "solicitud enviada").await
+        || dom::text_visible_on_page(page, "candidatura enviada").await
         || dom::text_visible_on_page(page, "you applied").await
-        || dom::text_visible_on_page(page, "ya aplicaste").await;
+        || dom::text_visible_on_page(page, "ya aplicaste").await
+        || dom::text_visible_on_page(page, "você se candidatou").await;
 
     if confirmed {
         let resume = ctx.actual_resume.clone().unwrap_or_else(|| ctx.target_resume.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default());
         println!("   ✅ VERIFICADO: {} en {} — LinkedIn confirma la oferta como aplicada. CV usado: {}.", ctx.role, ctx.company, resume);
+        println!("   👁️ [Pausa de Visibilidad] Mostrando insignia de confirmación en la página por 4s...");
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+
         crate::services::audit::log_audit_event(
             "PASO_5_APPLY_SUPERVISOR",
             &format!("Confirmación Oficial de Envío: {} @ {}", ctx.role, ctx.company),
