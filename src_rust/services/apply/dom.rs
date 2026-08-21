@@ -609,6 +609,81 @@ pub async fn click_by_text(page: &Page, labels: &[&str]) -> Result<bool> {
 /// Clicks LinkedIn's job-page Apply / Easy Apply button. Mirrors
 /// InteractionHandler.click_like_an_ai's selector-priority approach: try LinkedIn's
 /// known CSS selectors first (high precision), then fall back to fuzzy text matching.
+/// Clic exclusivo en botones de Solicitud Sencilla (Easy Apply) de LinkedIn.
+/// Retorna:
+/// - Some(true) si encontró y abrió una Solicitud Sencilla de LinkedIn.
+/// - Some(false) si solo encontró un botón de postulación externa.
+/// - None si no encontró ningún botón de postulación.
+pub async fn click_easy_apply_button(page: &Page) -> Result<Option<bool>> {
+    let _ = page.evaluate("window.scrollTo(0, 0)").await;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
+    let script = r#"(() => {
+        function visible(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) && !el.disabled; }
+        function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+        // 1. Selectores directos de Solicitud Sencilla (Easy Apply)
+        const easySelectors = [
+            "button[aria-label*='Solicitud sencilla']",
+            "button[aria-label*='Easy Apply']",
+            "button[aria-label*='Candidatura simplificada']",
+            ".jobs-apply-button--top-card button",
+            ".jobs-s-apply button",
+            "button.jobs-apply-button",
+            "a.jobs-apply-button"
+        ];
+
+        for (const sel of easySelectors) {
+            const els = document.querySelectorAll(sel);
+            for (const el of els) {
+                if (visible(el)) {
+                    const text = norm(el.innerText) || norm(el.getAttribute('aria-label'));
+                    // Descartar si el botón dice 'Solicitar' sin 'sencilla'
+                    if (text.includes('solicitar') && !text.includes('sencilla') && !text.includes('facil')) {
+                        continue;
+                    }
+                    el.scrollIntoView({block: 'center'});
+                    el.click();
+                    return "easy_clicked";
+                }
+            }
+        }
+
+        // 2. Búsqueda exhaustiva por texto de Solicitud Sencilla
+        const allButtons = Array.from(document.querySelectorAll("button, a, [role='button']"));
+        for (const el of allButtons) {
+            if (!visible(el) || el.closest('footer')) continue;
+            const text = norm(el.innerText) || norm(el.getAttribute('aria-label'));
+            if (text.includes('solicitud sencilla') || text.includes('easy apply') || text.includes('candidatura simplificada') || text.includes('candidatura facil')) {
+                el.scrollIntoView({block: 'center'});
+                el.click();
+                return "easy_clicked";
+            }
+        }
+
+        // 3. Verificar si solo existe botón de postulación externa
+        for (const el of allButtons) {
+            if (!visible(el) || el.closest('footer')) continue;
+            const text = norm(el.innerText) || norm(el.getAttribute('aria-label'));
+            if (/^(apply|apply now|solicitar|postularse|postular|solicitar empleo|apply on company website|candidatar-se)\b/.test(text.trim())) {
+                return "external_only";
+            }
+        }
+
+        return "none";
+    })()"#;
+
+    let res = page.evaluate(script).await?.into_value::<String>().unwrap_or_else(|_| "none".to_string());
+    match res.as_str() {
+        "easy_clicked" => Ok(Some(true)),
+        "external_only" => Ok(Some(false)),
+        _ => {
+            dump_apply_button_diagnostics(page).await;
+            Ok(None)
+        }
+    }
+}
+
 pub async fn click_apply_button(page: &Page) -> Result<bool> {
     let _ = page.evaluate("window.scrollTo(0, 0)").await;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
@@ -624,10 +699,6 @@ pub async fn click_apply_button(page: &Page) -> Result<bool> {
         "button[aria-label*='Easy Apply']",
         "button[aria-label*='Apply']",
         "a[aria-label*='Apply']",
-        // Spanish UI: external ("Solicitar" / "Solicitar en el sitio web de la empresa").
-        // Everything above is English-only or keyed on classes LinkedIn no longer ships,
-        // so on a Spanish account an external offer matched nothing here and fell through
-        // to the text search — which was footer-scoped and never saw the top card.
         "button[aria-label*='Solicitar']",
         "a[aria-label*='Solicitar']",
         "button[aria-label*='Postular']",
@@ -649,21 +720,12 @@ pub async fn click_apply_button(page: &Page) -> Result<bool> {
         return Ok(true);
     }
 
-    // Fallback: walk the WHOLE document for an apply control.
-    //
-    // This deliberately does not reuse click_by_text: that helper scans CANDIDATES_JS,
-    // which narrows to `footer button, footer a` whenever the page has a footer. On the
-    // Easy Apply modal that's right (its actions live in a footer), but on a job PAGE the
-    // footer is LinkedIn's site-wide one, so the search never reached the top-card Apply
-    // button. Combined with the English-only aria-labels above, every external offer on a
-    // Spanish account reported "Apply button not found" (jobs 18, 25 and 28).
     let fallback = r#"(() => {
         function visible(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) && !el.disabled; }
         function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
         const WANTED = /^(solicitud sencilla|easy apply|apply|apply now|solicitar|postularse|postular|solicitar empleo)\b/;
 
         const els = Array.from(document.querySelectorAll("button, a, [role='button']"));
-        // Prefer the top card: the first match in document order that is not in a footer.
         for (const el of els) {
             if (!visible(el) || el.closest('footer')) continue;
             const text = norm(el.innerText) || norm(el.getAttribute('aria-label'));

@@ -145,13 +145,24 @@ async fn process_job(
 
     let before_tabs = super::tabs::snapshot_target_ids(browser).await;
 
-    println!("   ⏳ Waiting for 'Apply' button to be ready...");
-    let clicked = dom::click_apply_button(page).await.unwrap_or(false);
+    println!("   ⏳ Verificando si la oferta tiene Solicitud Sencilla de LinkedIn (Easy Apply)...");
+    let apply_status = dom::click_easy_apply_button(page).await.unwrap_or(None);
 
-    if !clicked {
-        println!("   ❌ Apply button not found.");
-        let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Failed").error("Apply button not found"));
-        return Ok(());
+    match apply_status {
+        Some(true) => {
+            println!("   🎯 [LinkedIn Directo] Solicitud Sencilla (Easy Apply) detectada y abierta.");
+        }
+        Some(false) => {
+            println!("   ⏭️ [Vacante Externa] '{}' @ '{}' requiere postulación en portal externo.", role, job.company);
+            println!("      💾 Guardando en 'Manual' y omitiendo (modo solo Solicitud Sencilla de LinkedIn activo).");
+            let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Manual").error("Vacante externa omitida en el flujo de Solicitud Sencilla de LinkedIn."));
+            return Ok(());
+        }
+        None => {
+            println!("   ❌ No se encontró botón de Solicitud Sencilla disponible (oferta cerrada o no disponible).");
+            let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Failed").error("Botón de Solicitud Sencilla no encontrado"));
+            return Ok(());
+        }
     }
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -162,9 +173,9 @@ async fn process_job(
     // URL-diff check for the (more common) same-tab redirect case.
     let new_tab = super::tabs::wait_for_new_page(browser, &before_tabs, std::time::Duration::from_secs(4)).await;
 
-    let (page, is_external, current_url) = if let Some(new_page) = new_tab {
+    let (page, is_external, current_url) = if let Some(ref new_page) = new_tab {
         let u = new_page.url().await.ok().flatten().unwrap_or_default();
-        (new_page, true, u)
+        (new_page.clone(), true, u)
     } else {
         let u = page.url().await.ok().flatten().unwrap_or_default();
         let ext = !u.contains("linkedin.com/jobs");
@@ -214,45 +225,18 @@ async fn process_job(
     );
 
     if is_external {
-        println!("      📍 RESUME SELECTED: {:?}", target_res.file_name().unwrap_or_default());
-        let (salary_val, salary_curr) = resume_manager.get_salary_expectation(&role, &lang);
-        println!("      💰 RESOLVED SALARY: {} {} ({})", salary_val, salary_curr, lang);
+        println!("      ⏭️ [Vacante Externa] '{}' @ '{}' requiere postularse en portal externo ({}).", role, job.company, current_url);
+        println!("      💾 Guardando enlace externo en base de datos y omitiendo (modo solo Solicitud Sencilla de LinkedIn activo).");
+        
+        let _ = db.update_job_status(
+            job_id,
+            &JobStatusUpdate::new("Manual")
+                .external_link(current_url)
+                .error("Vacante externa guardada. Omitida en el flujo de Solicitud Sencilla de LinkedIn."),
+        );
 
-        let mut ctx = JobContext {
-            id: job_id,
-            role: role.clone(),
-            company: job.company.clone(),
-            location,
-            description: reqs.clone(),
-            url: url.clone(),
-            target_resume: target_res.clone(),
-            actual_resume: None,
-            applied_salary: Some(salary_val),
-            applied_currency: Some(salary_curr),
-        };
-
-        let ext_ai_client = ai_client.with_custom_model("claude-sonnet-5");
-        let result = external_flow::handle_external_application(page, db, &ext_ai_client, resume_manager, &mut ctx, profile_skills, dry_run).await?;
-        match result {
-            FlowResult::Submitted => {
-                println!("   🎉 [External] Application Successful!");
-                // External ATS resume widgets vary too much site-to-site for a generic
-                // read-back check yet (unlike the LinkedIn flow) — be honest about that
-                // instead of assuming the intended file was the one actually attached.
-                let resume = ctx.actual_resume.clone().unwrap_or_else(|| "SIN VERIFICAR — el sitio externo no permitió confirmar qué CV quedó adjunto".to_string());
-                let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Applied").uploaded_cv(resume));
-            }
-            FlowResult::Manual => {
-                println!("   ⚠️ [External] Manual intervention needed.");
-                let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Manual").external_link(current_url));
-            }
-            FlowResult::Debug => {
-                println!("   🛡️ [External][SHADOW] Formulario auditado sin enviar.");
-                // Restore to Matched (not left stuck in "Applying") so a dry-run audit
-                // never removes a job from the queue — it's just observation.
-                let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Matched").error("Shadow mode (externo): formulario auditado, no se envió."));
-            }
-            FlowResult::Stopped => {}
+        if let Some(new_p) = new_tab {
+            let _ = new_p.close().await;
         }
         return Ok(());
     }
