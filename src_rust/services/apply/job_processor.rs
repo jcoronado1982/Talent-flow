@@ -75,12 +75,18 @@ pub async fn run_apply_bot(
 
         write_status("Running", &format!("Aplicando [{}/{}]: {} en {}", idx + 1, total, job.role, job.company));
 
-        if let Err(e) = process_job(&page, &browser, &db, &ai_client, &resume_manager, &profile_skills, &job, dry_run, &stop_signal_path).await {
-            eprintln!("   [Error] {}", e);
-            if let Some(id) = job.id {
-                let _ = db.update_job_status(id, &JobStatusUpdate::new("Failed").error(e.to_string()));
+        let apply_result = process_job(&page, &browser, &db, &ai_client, &resume_manager, &profile_skills, &job, dry_run, &stop_signal_path).await;
+        let submitted = match apply_result {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("   [Error] {}", e);
+                if let Some(id) = job.id {
+                    let _ = db.update_job_status(id, &JobStatusUpdate::new("Failed").error(e.to_string()));
+                }
+                false
             }
-        }
+        };
+
         application_flow::cleanup_modal(&page).await;
         processed += 1;
 
@@ -88,10 +94,15 @@ pub async fn run_apply_bot(
             break;
         }
 
-        // Pausa de transición natural humana entre ofertas (8-15s)
-        let delay = pseudo_random_delay_secs(8, 15);
+        // Pausa ágil: 2-3s si se omitió/externa, 6-10s si se envió postulación real
+        let delay = if submitted {
+            pseudo_random_delay_secs(6, 10)
+        } else {
+            pseudo_random_delay_secs(2, 3)
+        };
+
         println!("   ⏱️ [Paso Humano] Pausa natural: {}s antes de pasar a la siguiente vacante...", delay);
-        for sec in 0..delay {
+        for _sec in 0..delay {
             if !*is_applying_flag.lock().await || stop_signal_path.exists() {
                 println!("✅ Batch Cancelled.");
                 crate::services::browser::close_browser(browser, handle).await;
@@ -117,10 +128,10 @@ async fn process_job(
     job: &Job,
     dry_run: bool,
     stop_signal_path: &Path,
-) -> Result<()> {
+) -> Result<bool> {
     if stop_signal_path.exists() {
         println!("🛑 Stop signal detected. Skipping job.");
-        return Ok(());
+        return Ok(false);
     }
 
     let job_id = job.id.unwrap_or(0);
@@ -134,12 +145,12 @@ async fn process_job(
 
     println!("   🌐 [Nav] Navigating to: {}", url);
     page.goto(&url).await?;
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
 
     if dom::text_visible_on_page(page, "application submitted").await || dom::text_visible_on_page(page, "postulación enviada").await {
         println!("   ✅ Already applied to this job.");
         let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Applied").resume("Previously"));
-        return Ok(());
+        return Ok(false);
     }
 
     let before_tabs = super::tabs::snapshot_target_ids(browser).await;
@@ -155,12 +166,12 @@ async fn process_job(
             println!("   ⏭️ [Vacante Externa] '{}' @ '{}' requiere postulación en portal externo.", role, job.company);
             println!("      💾 Guardando en 'Manual' y omitiendo (modo solo Solicitud Sencilla de LinkedIn activo).");
             let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Manual").error("Vacante externa omitida en el flujo de Solicitud Sencilla de LinkedIn."));
-            return Ok(());
+            return Ok(false);
         }
         None => {
             println!("   ❌ No se encontró botón de Solicitud Sencilla disponible (oferta cerrada o no disponible).");
             let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Failed").error("Botón de Solicitud Sencilla no encontrado"));
-            return Ok(());
+            return Ok(false);
         }
     }
 
@@ -208,7 +219,7 @@ async fn process_job(
             "El supervisor impidió enviar un documento viejo o inválido."
         );
         let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Manual").error(msg));
-        return Ok(());
+        return Ok(false);
     }
 
     crate::services::audit::log_audit_event(
@@ -237,7 +248,7 @@ async fn process_job(
         if let Some(new_p) = new_tab {
             let _ = new_p.close().await;
         }
-        return Ok(());
+        return Ok(false);
     }
 
     // Same-tab Easy Apply modal flow — reuses the resume resolved above.
@@ -260,21 +271,26 @@ async fn process_job(
 
     let result = application_flow::handle_application_flow(page, db, ai_client, resume_manager, &mut ctx, profile_skills, dry_run, stop_signal_path).await?;
 
-    match result {
-        FlowResult::Submitted => println!("   🎉 Application Successfully Submitted!"),
+    let is_submitted = match result {
+        FlowResult::Submitted => {
+            println!("   🎉 Application Successfully Submitted!");
+            true
+        }
         FlowResult::Manual => {
             println!("   ⚠️  Complex form/Manual intervention needed.");
             let resume = ctx.actual_resume.clone().unwrap_or_else(|| filename_str(&target_res));
             let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Manual").resume(resume));
+            false
         }
         FlowResult::Debug => {
             println!("   🛡️ [SHADOW MODE] Formulario auditado sin enviar.");
             let _ = db.update_job_status(job_id, &JobStatusUpdate::new("Matched").error("Shadow mode: formulario auditado, no se envió."));
+            false
         }
-        FlowResult::Stopped => {}
-    }
+        FlowResult::Stopped => false,
+    };
 
-    Ok(())
+    Ok(is_submitted)
 }
 
 fn filename_str(path: &Path) -> String {
