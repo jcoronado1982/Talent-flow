@@ -6,6 +6,7 @@ pub mod cookie_injector;
 pub mod audit;
 pub mod auth;
 pub mod search;
+pub mod rehydrate;
 
 pub use ai_client::*;
 pub use normalizer::*;
@@ -14,3 +15,4 @@ pub use cookie_injector::*;
 pub use audit::*;
 pub use auth::*;
 pub use search::*;
+pub use rehydrate::*;

@@ -35,6 +35,7 @@ Cuando el usuario te pida ejecutar o probar cualquier parte del sistema, utiliza
 | **5. Postulación (Apply Bot)** | `cargo run -- apply --dry-run` *(Auditoría)*<br>`cargo run -- apply` *(Envío real)* | Procesa las vacantes `Matched` pendientes seleccionando el PDF exacto en `cv/`. |
 | **6. Postulación Externa Directa** | `cargo run -- apply-external --dry-run` *(Auditoría)*<br>`cargo run -- apply-external` *(Envío real)* | Aplica directamente a vacantes externas usando su `external_link` sin pasar por LinkedIn. Soporta `--job-id`, `--status` y `--limit`. |
 | **7. Login Asistido (Manual)** | `cargo run -- login --profile user_data_safe` | Abre la ventana de login para que el usuario humano inicie sesión si las cookies expiraron. |
+| **8. Rehidratar Vacantes Incompletas** | `cargo run -- rehydrate --profile user_data_safe` | Recorre las vacantes con descripción vacía en SQLite, visita su URL directa, extrae requisitos y re-evalúa con Gemini. |
 
 ---
 

@@ -214,6 +214,76 @@ impl DatabaseRepository {
         Ok(())
     }
 
+    pub fn update_job_full_details(
+        &self,
+        id: i64,
+        requirements: &str,
+        language: &str,
+        match_score: f64,
+        status: &str,
+        analysis: &str,
+        skills: &str,
+        ai_model: &str,
+    ) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE jobs SET requirements = ?1, language = ?2, match_score = ?3, status = ?4, raw_analysis = ?5, skills = ?6, ai_model = ?7, updated_at = CURRENT_TIMESTAMP WHERE id = ?8",
+            rusqlite::params![requirements, language, match_score, status, analysis, skills, ai_model, id]
+        )?;
+        Ok(())
+    }
+
+    pub fn get_jobs_with_missing_requirements(&self, limit: Option<usize>) -> Result<Vec<Job>> {
+        let conn = self.connect()?;
+        let limit_val = limit.unwrap_or(500) as i64;
+        let mut stmt = conn.prepare(
+            "SELECT id, url, company, role, location, work_mode, date_posted, source, requirements, match_score, priority_score, created_at, status, applied_resume, applied_salary, applied_currency, error_log, raw_analysis, external_link, audit_trail, updated_at, skills, apply_type, processing_time, raw_prompt, language, uploaded_cv, ai_model \
+             FROM jobs \
+             WHERE requirements IS NULL OR TRIM(requirements) = '' \
+             ORDER BY id ASC \
+             LIMIT ?1"
+        )?;
+
+        let job_iter = stmt.query_map([limit_val], |row| {
+            Ok(Job {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                company: row.get(2)?,
+                role: row.get(3)?,
+                location: row.get(4)?,
+                work_mode: row.get(5)?,
+                date_posted: row.get(6)?,
+                source: row.get(7)?,
+                requirements: row.get(8)?,
+                match_score: row.get(9)?,
+                priority_score: row.get(10)?,
+                created_at: row.get(11)?,
+                status: row.get(12)?,
+                applied_resume: row.get(13)?,
+                applied_salary: row.get(14)?,
+                applied_currency: row.get(15)?,
+                error_log: row.get(16)?,
+                raw_analysis: row.get(17)?,
+                external_link: row.get(18)?,
+                audit_trail: row.get(19)?,
+                updated_at: row.get(20)?,
+                skills: row.get(21)?,
+                apply_type: row.get(22)?,
+                processing_time: row.get(23)?,
+                raw_prompt: row.get(24)?,
+                language: row.get(25)?,
+                uploaded_cv: row.get(26)?,
+                ai_model: row.get(27)?,
+            })
+        })?;
+
+        let mut jobs = Vec::new();
+        for j in job_iter {
+            jobs.push(j?);
+        }
+        Ok(jobs)
+    }
+
     pub fn bulk_update_status(&self, ids: &[i64], new_status: &str) -> Result<()> {
         if ids.is_empty() {
             return Ok(());

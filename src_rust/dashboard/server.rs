@@ -117,6 +117,7 @@ pub async fn start_dashboard_server(
         .route("/api/clear_jobs", post(handle_clear_jobs))
         .route("/api/inspection/clear", post(handle_clear_inspection))
         .route("/api/jobs/bulk_update", post(handle_bulk_update))
+        .route("/api/jobs/rehydrate", post(handle_rehydrate))
         .route("/api/jobs/:id/reanalyze", post(handle_reanalyze_job))
         .route("/api/audit/:span_id", post(handle_audit_span))
         .route("/api/audit/logs", get(handle_audit_logs))
@@ -400,13 +401,27 @@ async fn handle_bulk_update(
     }
 }
 
+async fn handle_rehydrate(State(state): State<AppState>) -> impl IntoResponse {
+    let db = state.db.clone();
+    let ai_client = state.ai_client.clone();
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let profile_path = current_dir.join("user_data_safe");
+
+    tokio::spawn(async move {
+        println!("🔄 [Dashboard API] Iniciando rehidratación de vacantes incompletas...");
+        let _ = crate::services::rehydrate::run_rehydrate_empty_jobs(&db, &ai_client, &profile_path, None).await;
+    });
+
+    (StatusCode::OK, Json(json!({"status": "started", "message": "Rehydration process started"})))
+}
+
 async fn handle_reanalyze_job(
     State(state): State<AppState>,
     AxumPath(job_id): AxumPath<i64>,
 ) -> impl IntoResponse {
     match state.db.get_job_by_id(job_id) {
         Ok(Some(job)) => {
-            let desc = job.requirements.unwrap_or(job.role.clone());
+            let desc = job.requirements.filter(|r| !r.trim().is_empty()).unwrap_or(job.role.clone());
             let analysis = state.ai_client.analyze_job(&job.role, &job.company, &desc).await.unwrap_or_else(|_| crate::services::AnalysisResult {
                 match_score: 75.0,
                 status: "Matched".to_string(),

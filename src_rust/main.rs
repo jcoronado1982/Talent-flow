@@ -102,6 +102,15 @@ enum Commands {
         #[arg(long)]
         url: Option<String>,
     },
+    /// Rehidrata vacantes incompletas (requirements vacío), extrayendo su descripción completa y re-evaluando con Gemini
+    Rehydrate {
+        /// Carpeta de perfil de Chrome a usar
+        #[arg(long, default_value = "user_data_safe")]
+        profile: String,
+        /// Límite de vacantes a rehidratar
+        #[arg(long)]
+        limit: Option<usize>,
+    },
 }
 
 #[tokio::main]
@@ -380,6 +389,12 @@ async fn main() -> Result<()> {
                 flag,
             ).await?;
             println!("✅ Apply Bot Directo Externo finalizado. {} ofertas procesadas.", processed);
+        }
+        Some(Commands::Rehydrate { profile, limit }) => {
+            let profile_path = std::env::current_dir()?.join(&profile);
+            let ai_client = AiClient::with_profile(Some(&app_config.profile));
+            services::rehydrate::run_rehydrate_empty_jobs(&db, &ai_client, &profile_path, limit).await?;
+            print_stats(&db)?;
         }
         None => {
             print_stats(&db)?;

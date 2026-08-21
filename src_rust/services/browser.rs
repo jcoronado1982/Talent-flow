@@ -138,6 +138,7 @@ pub async fn launch_browser_with_profile(user_data_path: &std::path::Path) -> Re
         .arg("--no-first-run")
         .arg("--no-default-browser-check")
         .arg("--disable-session-crashed-bubble")
+        .arg("--ozone-platform=x11")
         .arg("--start-maximized")
         .spawn()
         .context("Error al iniciar Google Chrome nativo")?;
@@ -317,14 +318,24 @@ impl NativeBrowserScraper {
 
             let get_cards_count_js = r#"
                 (() => {
-                    const cards = document.querySelectorAll('.jobs-search-results__list-item, .job-card-container, div[data-job-id]');
-                    return cards.length || 0;
+                    const candidateNodes = Array.from(document.querySelectorAll('ul.scaffold-layout__list-container > li, .jobs-search-results-list li.jobs-search-results__list-item, li[data-occludable-job-id], .job-card-container'));
+                    const seenUrls = new Set();
+                    let count = 0;
+                    for (const card of candidateNodes) {
+                        const link = card.querySelector('a[href*="/jobs/view/"], a.job-card-list__title, a.job-card-container__link');
+                        if (!link) continue;
+                        const cleanUrl = link.href.split('?')[0];
+                        if (seenUrls.has(cleanUrl)) continue;
+                        seenUrls.add(cleanUrl);
+                        count++;
+                    }
+                    return count;
                 })()
             "#;
 
             let total_val = page.evaluate(get_cards_count_js).await?;
             let total_cards = total_val.into_value::<usize>().unwrap_or(0);
-            println!("🔍 [Rust Native Browser] Ofertas detectadas en página {}: {}", page_idx + 1, total_cards);
+            println!("🔍 [Rust Native Browser] Ofertas únicas detectadas en página {}: {}", page_idx + 1, total_cards);
 
             if total_cards == 0 {
                 println!("⚠️ [Rust Native Browser] No se encontraron más ofertas en esta página.");
@@ -339,27 +350,44 @@ impl NativeBrowserScraper {
                     }
                 }
 
-                // Clic visual en la tarjeta
+                // Clic visual e interacción en la tarjeta única
                 let click_and_extract_js = format!(
                     r#"
                     (() => {{
-                        const cards = document.querySelectorAll('.jobs-search-results__list-item, .job-card-container, div[data-job-id]');
-                        if (cards.length <= {index}) return null;
-                        const card = cards[{index}];
-                        
-                        card.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                        const link = card.querySelector('a.job-card-list__title, a.job-card-container__link, a');
-                        if (link) link.click();
+                        const candidateNodes = Array.from(document.querySelectorAll('ul.scaffold-layout__list-container > li, .jobs-search-results-list li.jobs-search-results__list-item, li[data-occludable-job-id], .job-card-container'));
+                        const uniqueCards = [];
+                        const seenUrls = new Set();
+                        for (const c of candidateNodes) {{
+                            const l = c.querySelector('a[href*="/jobs/view/"], a.job-card-list__title, a.job-card-container__link');
+                            if (!l) continue;
+                            const u = l.href.split('?')[0];
+                            if (seenUrls.has(u)) continue;
+                            seenUrls.add(u);
+                            uniqueCards.push({{ card: c, link: l, url: u }});
+                        }}
 
-                        const titleEl = card.querySelector('.job-card-list__title, a.job-card-container__link, strong, .base-search-card__title');
-                        const companyEl = card.querySelector('.job-card-container__primary-description, .artdeco-entity-lockup__subtitle, .base-search-card__subtitle');
-                        const locEl = card.querySelector('.job-card-container__metadata-item, .job-search-card__location');
+                        if (uniqueCards.length <= {index}) return null;
+                        const item = uniqueCards[{index}];
+
+                        item.card.scrollIntoView({{ behavior: 'instant', block: 'center' }});
+                        const clickTarget = item.card.querySelector('.job-card-list__title, .artdeco-entity-lockup__title, a.job-card-container__link') || item.link;
+                        clickTarget.click();
+
+                        const titleEl = item.card.querySelector('.job-card-list__title, a.job-card-container__link, strong, .base-search-card__title');
+                        let rawTitle = titleEl ? titleEl.innerText.trim() : 'Developer';
+                        let cleanTitle = rawTitle.split('\n')[0].replace(/with verification|con verificación/gi, '').trim();
+
+                        const companyEl = item.card.querySelector('.job-card-container__primary-description, .artdeco-entity-lockup__subtitle, .base-search-card__subtitle, .job-card-container__company-name');
+                        const company = companyEl ? companyEl.innerText.split('\n')[0].trim() : 'Empresa';
+
+                        const locEl = item.card.querySelector('.job-card-container__metadata-item, .job-search-card__location');
+                        const loc = locEl ? locEl.innerText.split('\n')[0].trim() : 'Colombia';
 
                         return {{
-                            title: titleEl ? titleEl.innerText.trim() : 'Developer',
-                            company: companyEl ? companyEl.innerText.trim() : 'Empresa',
-                            location: locEl ? locEl.innerText.trim() : 'Colombia',
-                            url: link ? link.href.split('?')[0] : window.location.href
+                            title: cleanTitle,
+                            company: company,
+                            location: loc,
+                            url: item.url
                         }};
                     }})()
                     "#
@@ -373,24 +401,55 @@ impl NativeBrowserScraper {
                         let loc = card_info.get("location").and_then(|v| v.as_str()).unwrap_or("Colombia");
                         let url = card_info.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
-                        // Sondeo adaptativo: esperar hasta 4s a que LinkedIn monte el contenido de #job-details
+                        // Sondeo adaptativo con expansión de "Ver más"
                         let mut full_desc = String::new();
                         let start_wait = std::time::Instant::now();
-                        while start_wait.elapsed() < Duration::from_secs(4) {
+                        while start_wait.elapsed() < Duration::from_millis(3500) {
                             tokio::time::sleep(Duration::from_millis(300)).await;
                             let get_desc_js = r#"
                                 (() => {
-                                    const descEl = document.querySelector('#job-details, .jobs-description__content, .jobs-box__html-content, .show-more-less-html__markup');
-                                    return descEl ? descEl.innerText.trim().slice(0, 3000) : '';
+                                    const moreBtns = document.querySelectorAll(
+                                        'button.jobs-description__footer-button, button[aria-label*="Show more"], button[aria-label*="Ver más"], button.show-more-less-html__button, .artdeco-card__action'
+                                    );
+                                    for (const b of moreBtns) {
+                                        try { b.click(); } catch(e) {}
+                                    }
+
+                                    const descEl = document.querySelector(
+                                        '#job-details, .jobs-description__content, .jobs-box__html-content, .show-more-less-html__markup, article.jobs-description__container, article, .decorated-job-posting__details, .description__text, .jobs-description'
+                                    );
+                                    if (descEl) {
+                                        const text = descEl.innerText.trim();
+                                        if (text.length > 50) {
+                                            return text.slice(0, 4000);
+                                        }
+                                    }
+                                    return '';
                                 })()
                             "#;
                             if let Ok(desc_res) = page.evaluate(get_desc_js).await {
                                 if let Ok(text) = desc_res.into_value::<String>() {
-                                    if !text.is_empty() && text.len() > 30 {
+                                    if text.len() > 50 {
                                         full_desc = text;
                                         break;
                                     }
                                 }
+                            }
+                        }
+
+                        // Fallback de navegación directa si el panel lateral no entregó la descripción
+                        if full_desc.len() < 50 && !url.is_empty() {
+                            println!("      🌐 [Fallback Directo] Extrayendo descripción desde URL: {}", url);
+                            if let Ok(direct_page) = browser.new_page(url).await {
+                                let _ = crate::services::browser::inject_stealth_scripts(&direct_page).await;
+                                tokio::time::sleep(Duration::from_millis(2000)).await;
+                                if let Ok(direct_desc) = crate::services::rehydrate::extract_description_from_job_page(&direct_page).await {
+                                    if direct_desc.len() > 50 {
+                                        full_desc = direct_desc;
+                                        println!("      ✅ [Fallback Exitoso] Descripción recuperada ({} caracteres).", full_desc.len());
+                                    }
+                                }
+                                let _ = direct_page.close().await;
                             }
                         }
 
@@ -431,7 +490,7 @@ impl NativeBrowserScraper {
                         if let Ok(affected) = insert_res {
                             if affected > 0 {
                                 total_saved += 1;
-                                println!("  💾 [Gemini + SQLite] Guardada oferta #{}: {} en {} (Match: {}%)", total_saved, role, company, analysis.match_score);
+                                println!("  💾 [Gemini + SQLite] Guardada oferta #{}: {} en {} (Match: {}% | Desc: {} chars)", total_saved, role, company, analysis.match_score, full_desc.len());
                             }
                         }
 
