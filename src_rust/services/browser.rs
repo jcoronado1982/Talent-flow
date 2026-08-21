@@ -361,17 +361,26 @@ impl NativeBrowserScraper {
                         let loc = card_info.get("location").and_then(|v| v.as_str()).unwrap_or("Colombia");
                         let url = card_info.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
-                        tokio::time::sleep(Duration::from_millis(1200)).await;
-
-                        let get_desc_js = r#"
-                            (() => {
-                                const descEl = document.querySelector('#job-details, .jobs-description__content, .jobs-box__html-content, .show-more-less-html__markup');
-                                return descEl ? descEl.innerText.trim().slice(0, 3000) : '';
-                            })()
-                        "#;
-
-                        let desc_res = page.evaluate(get_desc_js).await?;
-                        let full_desc = desc_res.into_value::<String>().unwrap_or_default();
+                        // Sondeo adaptativo: esperar hasta 4s a que LinkedIn monte el contenido de #job-details
+                        let mut full_desc = String::new();
+                        let start_wait = std::time::Instant::now();
+                        while start_wait.elapsed() < Duration::from_secs(4) {
+                            tokio::time::sleep(Duration::from_millis(300)).await;
+                            let get_desc_js = r#"
+                                (() => {
+                                    const descEl = document.querySelector('#job-details, .jobs-description__content, .jobs-box__html-content, .show-more-less-html__markup');
+                                    return descEl ? descEl.innerText.trim().slice(0, 3000) : '';
+                                })()
+                            "#;
+                            if let Ok(desc_res) = page.evaluate(get_desc_js).await {
+                                if let Ok(text) = desc_res.into_value::<String>() {
+                                    if !text.is_empty() && text.len() > 30 {
+                                        full_desc = text;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
 
                         // Actualizar status.json
                         let status_data = json!({
