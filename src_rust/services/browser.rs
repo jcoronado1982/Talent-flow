@@ -73,23 +73,35 @@ pub async fn inject_stealth_scripts(page: &chromiumoxide::Page) -> Result<()> {
     Ok(())
 }
 
-/// Launches Chrome against the persisted, already-authenticated LinkedIn profile.
-pub async fn launch_authenticated_browser() -> Result<(Browser, JoinHandle<()>)> {
+/// Launches Chrome against the persisted LinkedIn profile for APPLYING (email.coronado@gmail.com / user_data_auth).
+pub async fn launch_apply_browser() -> Result<(Browser, JoinHandle<()>)> {
     let current_dir = std::env::current_dir()?;
+    let user_data_path = if current_dir.join("user_data_auth").exists() {
+        current_dir.join("user_data_auth")
+    } else if current_dir.join("user_data_safe").exists() {
+        current_dir.join("user_data_safe")
+    } else {
+        current_dir.join("user_data")
+    };
+    launch_browser_with_profile(&user_data_path).await
+}
 
-    // user_data_safe (autenticado 2026-08-18 con safe.jcoronado@gmail.com) tiene prioridad:
-    // es la sesión que el usuario pidió explícitamente usar para las pruebas.
+/// Launches Chrome against the persisted LinkedIn profile for SEARCHING (safe.jcoronado@gmail.com / user_data_safe).
+pub async fn launch_search_browser() -> Result<(Browser, JoinHandle<()>)> {
+    let current_dir = std::env::current_dir()?;
     let user_data_path = if current_dir.join("user_data_safe").exists() {
         current_dir.join("user_data_safe")
     } else if current_dir.join("user_data_auth").exists() {
         current_dir.join("user_data_auth")
-    } else if current_dir.join("user_data_auth_profile_1").exists() {
-        current_dir.join("user_data_auth_profile_1")
     } else {
         current_dir.join("user_data")
     };
-
     launch_browser_with_profile(&user_data_path).await
+}
+
+/// Launches Chrome against the persisted, already-authenticated LinkedIn profile (defaults to apply).
+pub async fn launch_authenticated_browser() -> Result<(Browser, JoinHandle<()>)> {
+    launch_apply_browser().await
 }
 
 /// 🚀 LANZADOR DE GOOGLE CHROME EN MODO HUMANO PURO (NO MODIFICAR)
@@ -205,7 +217,7 @@ impl NativeBrowserScraper {
     ) -> Result<usize> {
         println!("🚀 [Rust Native Browser] Iniciando navegador Chrome con tu sesión activa de LinkedIn...");
 
-        let (browser, handle) = launch_authenticated_browser().await?;
+        let (browser, handle) = launch_search_browser().await?;
 
         let mut total_saved = 0;
         let max_pages = 5; // Escanear hasta 5 páginas continuas (hasta 125 ofertas)

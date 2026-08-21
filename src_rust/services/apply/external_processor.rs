@@ -55,7 +55,7 @@ pub async fn run_external_apply_bot(
     }
     println!("📂 {} ofertas externas encontradas en la base de datos.", jobs.len());
 
-    let (browser, handle) = crate::services::browser::launch_authenticated_browser().await?;
+    let (browser, handle) = crate::services::browser::launch_apply_browser().await?;
     let page = browser.new_page("about:blank").await?;
     let _ = crate::services::browser::inject_stealth_scripts(&page).await;
 

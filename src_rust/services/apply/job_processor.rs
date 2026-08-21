@@ -52,7 +52,7 @@ pub async fn run_apply_bot(
     }
     println!("📂 {} ofertas pendientes en base de datos.", jobs.len());
 
-    let (browser, handle) = crate::services::browser::launch_authenticated_browser().await?;
+    let (browser, handle) = crate::services::browser::launch_apply_browser().await?;
     let page = browser.new_page("about:blank").await?;
     // Modelo que se cambia a mano (intencional — no convertir en config)
     let ai_client = AiClient::with_profile(Some(&profile)).with_custom_model("gpt-5.6-terra");
