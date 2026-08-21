@@ -33,10 +33,10 @@ Cuando el usuario indique cambiar a la cuenta personal (`email.coronado@gmail.co
 1. En [`config/credentials.yaml`](file:///home/jcoronado/Desktop/dev/TalentFlow/config/credentials.yaml):
    ```yaml
    linkedin:
-     email: "email.coronado@gmail.com"
-     password: "PrivadoSafe002*1"
+     email: "tu_email@ejemplo.com"
+     password: "TU_PASSWORD"
    gmail:
-     email: "email.coronado@gmail.com"
+     email: "tu_email@ejemplo.com"
    ```
 2. En [`config/profile_config.json`](file:///home/jcoronado/Desktop/dev/TalentFlow/config/profile_config.json):
    ```json

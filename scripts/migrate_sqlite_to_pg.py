@@ -13,7 +13,7 @@ from psycopg2.extras import execute_values
 
 # ---------- Configuración ----------
 SQLITE_PATH = Path(__file__).resolve().parents[1] / "talentflow.db"  # Ajusta si cambias la ubicación
-POSTGRES_DSN = "host=localhost dbname=center_data user=admin password=admin123 port=5432"
+POSTGRES_DSN = os.environ.get("POSTGRES_DSN", "host=localhost dbname=center_data user=postgres password=postgres port=5432")
 # -----------------------------------
 
 if not SQLITE_PATH.is_file():
