@@ -538,15 +538,15 @@ impl AiClient {
         }
     }
 
-    /// Answers a whole form step at once, mirroring JobAnalyzer.answer_form /
-    /// AiPromptBuilder.get_form_prompt. Returns a flat label -> answer map.
-    pub async fn answer_form(
+    /// Answers a form step using a dedicated prompt file (apply_linkedin.txt or apply_external.txt).
+    pub async fn answer_form_custom(
         &self,
         schema: &[crate::services::apply::dom::FormField],
         profile_yaml: &str,
         resolved_salary: Option<&str>,
         resolved_currency: Option<&str>,
         job_location: Option<&str>,
+        prompt_filename: &str,
     ) -> Result<std::collections::HashMap<String, String>> {
         let form_payload: Vec<Value> = schema
             .iter()
@@ -564,7 +564,7 @@ impl AiClient {
         let salary_instruction = resolved_salary
             .map(|s| {
                 let mut instr = format!(
-                    "\n5. MANDATORY SALARY: For any question about salary expectations, use EXACTLY '{}'. Do not use currency symbols or text if the field seems numeric.",
+                    "\nMANDATORY SALARY: For any question about salary expectations, use EXACTLY '{}'. Do not use currency symbols or text if the field seems numeric.",
                     s
                 );
                 if let Some(c) = resolved_currency {
@@ -575,36 +575,25 @@ impl AiClient {
             .unwrap_or_default();
         let location_context = job_location.map(|l| format!("\nCURRENT JOB LOCATION: {}", l)).unwrap_or_default();
 
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let prompt_path = current_dir.join("prompts").join(prompt_filename);
+        let base_prompt = std::fs::read_to_string(&prompt_path).unwrap_or_else(|_| {
+            "ROLE: Technical Recruiter / IT Talent Acquisition. Complete the form schema acting as the candidate.".to_string()
+        });
+
         let prompt = format!(
-            "ROLE: Technical Recruiter / IT Talent Acquisition\n\
-             OBJECTIVE: Completar un formulario de aplicación de empleo actuando como el candidato.\n\n\
-             CANDIDATE PROFILE (YAML):\n{profile}\n{location}\n\
-             CANDIDATE SUGGESTED SALARY: {salary} {currency}\n\n\
-             FORM SCHEMA (JSON to fill):\n{schema}\n\n\
-             TASKS & INSTRUCTIONS:\n\
-             1. Responde cada pregunta del FORM SCHEMA usando estrictamente el PROFILE.\n\
-             2. Si el input es numérico, responde solo con dígitos, sin texto adicional.\n\
-             3. DATOS DE CONTACTO E IDENTIDAD (teléfono, email, nombre, documento/DNI, LinkedIn, GitHub, portafolio): copia el valor EXACTO del PROFILE. Está prohibido inventarlos, abreviarlos o poner un número de relleno. Si el PROFILE no trae ese dato, responde cadena vacía \"\" en vez de inventar.\n\
-             4. JUICIO PROFESIONAL: SOLO para preguntas de años de experiencia en una tecnología ausente del PROFILE responde \"0\". Nunca uses \"0\" ni un número arbitrario para datos de contacto, ubicación, fechas o preferencias.\n\
-             5. UBICACIÓN/CIUDAD: cualquier campo de location/city debe responderse con la location del perfil, escrita como texto (ej. \"Medellín, Colombia\"). Nunca \"N/A\" ni un número.\n\
-             6. OBJETIVO PRINCIPAL: que la aplicación se pueda enviar; no dejes campos obligatorios sin responder.{salary_instruction}\n\
-             7. Para \"select\", \"radio\" o \"checkbox\", usa EXACTAMENTE una de las \"options\" dadas.\n\
-             8. CAMPOS OBLIGATORIOS (\"required\": true): tienen PRIORIDAD y NO pueden quedar vacíos, \
-             porque un solo obligatorio en blanco hace que el portal rechace todo el formulario. \
-             Orden para resolverlos: (a) busca el dato en el PROFILE; (b) si el PROFILE no lo trae, \
-             deduce la respuesta más razonable y profesional a partir del contexto de la vacante y \
-             del perfil, y respóndela — es preferible una respuesta sensata a dejarlo vacío. \
-             ÚNICA EXCEPCIÓN: los datos de contacto e identidad de la regla 3 (teléfono, email, nombre, \
-             documento, enlaces) NUNCA se inventan, ni siquiera siendo obligatorios.\n\
-             9. Los campos con \"required\": false que no puedas resolver con el PROFILE, déjalos vacíos \
-             en vez de inventar: no bloquean el envío.\n\n\
-             FORMAT: Responde ÚNICAMENTE un objeto JSON plano {{\"<label exacto>\": \"<respuesta>\", ...}}. Nada de texto fuera del JSON.",
+            "{base_prompt}\n\n\
+             === CANDIDATE PROFILE (YAML) ===\n{profile}\n{location}\n\
+             CANDIDATE SUGGESTED SALARY: {salary} {currency}\n{salary_instruction}\n\n\
+             === FORM SCHEMA (JSON to fill) ===\n{schema}\n\n\
+             Respond ONLY with a valid JSON map {{\"<exact label>\": \"<answer>\"}}.",
+            base_prompt = base_prompt,
             profile = profile_yaml,
             location = location_context,
             salary = resolved_salary.unwrap_or("Check profile"),
             currency = resolved_currency.unwrap_or(""),
-            schema = serde_json::to_string_pretty(&form_payload).unwrap_or_default(),
             salary_instruction = salary_instruction,
+            schema = serde_json::to_string_pretty(&form_payload).unwrap_or_default(),
         );
 
         let raw_text = self.query_llm(&prompt).await?;
@@ -617,7 +606,6 @@ impl AiClient {
             .trim();
 
         let parsed: Value = serde_json::from_str(clean_json).ok().or_else(|| {
-            // Some models wrap the object in prose; extract the outermost {...}.
             let start = clean_json.find('{');
             let end = clean_json.rfind('}');
             match (start, end) {
@@ -639,6 +627,42 @@ impl AiClient {
             }
         }
         Ok(answers)
+    }
+
+    /// Answers a LinkedIn Easy Apply form step using prompts/apply_linkedin.txt
+    pub async fn answer_linkedin_form(
+        &self,
+        schema: &[crate::services::apply::dom::FormField],
+        profile_yaml: &str,
+        resolved_salary: Option<&str>,
+        resolved_currency: Option<&str>,
+        job_location: Option<&str>,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        self.answer_form_custom(schema, profile_yaml, resolved_salary, resolved_currency, job_location, "apply_linkedin.txt").await
+    }
+
+    /// Answers an External ATS form step using prompts/apply_external.txt
+    pub async fn answer_external_form(
+        &self,
+        schema: &[crate::services::apply::dom::FormField],
+        profile_yaml: &str,
+        resolved_salary: Option<&str>,
+        resolved_currency: Option<&str>,
+        job_location: Option<&str>,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        self.answer_form_custom(schema, profile_yaml, resolved_salary, resolved_currency, job_location, "apply_external.txt").await
+    }
+
+    /// Answers a whole form step at once. Defaults to LinkedIn prompt.
+    pub async fn answer_form(
+        &self,
+        schema: &[crate::services::apply::dom::FormField],
+        profile_yaml: &str,
+        resolved_salary: Option<&str>,
+        resolved_currency: Option<&str>,
+        job_location: Option<&str>,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        self.answer_linkedin_form(schema, profile_yaml, resolved_salary, resolved_currency, job_location).await
     }
 
     /// Picks the best resume for a job from the files that ACTUALLY exist on disk.

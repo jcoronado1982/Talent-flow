@@ -159,10 +159,12 @@ pub async fn fill_form(
     if !form_payload.is_empty() {
         println!("      🤖 Consultando IA para {} preguntas...", form_payload.len());
         let profile_yaml = resume_manager.build_profile_yaml(Some(&ctx.location));
-        match ai_client
-            .answer_form(&form_payload, &profile_yaml, ctx.applied_salary.as_deref(), ctx.applied_currency.as_deref(), Some(&ctx.location))
-            .await
-        {
+        let ai_call = if prefer_modal {
+            ai_client.answer_linkedin_form(&form_payload, &profile_yaml, ctx.applied_salary.as_deref(), ctx.applied_currency.as_deref(), Some(&ctx.location)).await
+        } else {
+            ai_client.answer_external_form(&form_payload, &profile_yaml, ctx.applied_salary.as_deref(), ctx.applied_currency.as_deref(), Some(&ctx.location)).await
+        };
+        match ai_call {
             Ok(ai_answers) => answers.extend(ai_answers),
             Err(e) => eprintln!("      ⚠️ Error consultando IA para el formulario: {}", e),
         }
@@ -253,7 +255,14 @@ pub async fn fill_form(
                 let targets: Vec<String> = ans.split(',').map(|s| s.trim().to_string()).collect();
                 match dom::fill_choice_field(page, &field.id, &field.field_type, &targets).await {
                     Ok(true) => Ok(dom::FillOutcome::Filled),
-                    Ok(false) => Ok(dom::FillOutcome::NeedsHuman(format!("Opción '{}' no encontrada en '{}'", ans, field.label))),
+                    Ok(false) => {
+                        if !field.required || label_lower.contains("follow") || label_lower.contains("seguir") || label_lower.contains("notif") || label_lower == "off" || label_lower == "on" {
+                            println!("      ℹ️ Checkbox/Toggle opcional ('{}') conservado en su estado actual.", field.label);
+                            Ok(dom::FillOutcome::Filled)
+                        } else {
+                            Ok(dom::FillOutcome::NeedsHuman(format!("Opción '{}' no encontrada en '{}'", ans, field.label)))
+                        }
+                    }
                     Err(e) => Err(e),
                 }
             }
