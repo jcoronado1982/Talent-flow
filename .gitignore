@@ -30,6 +30,23 @@ resumes/
 # Configuration & Secrets
 config/credentials.yaml
 .env
+config/profile_config.json
+
+# Browser Profiles, Sessions, and User Data (Strictly Local Only)
+user_data/
+user_data/**
+user_data_*/
+user_data_*/**
+**/user_data/
+**/user_data/**
+**/user_data_*/**
+*SingletonLock*
+*SingletonCookie*
+*SingletonSocket*
+cookies.pkl
+cookies.json
+*.session
+*.cookie
 
 # Dashboard specific
 dashboard/status.json
@@ -39,17 +56,12 @@ dashboard/server.log
 # VS Code
 .vscode/
 
-
 # OS
 .DS_Store
 
 # Dynamic Data
-user_data_*/
 stop.signal
 resumen-*.html
-config/profile_config.json
-cookies.pkl
-cookies.json
 *.csv
 debug_failure_*.html
 *.signal
