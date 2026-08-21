@@ -205,7 +205,7 @@ impl NativeBrowserScraper {
     pub fn new(db: DatabaseRepository) -> Self {
         Self {
             db,
-            ai_client: AiClient::new(),
+            ai_client: AiClient::new().with_custom_model("gemini-3-flash-preview"),
         }
     }
 
