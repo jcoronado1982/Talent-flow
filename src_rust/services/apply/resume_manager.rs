@@ -410,6 +410,18 @@ impl ResumeManager {
 
         println!("   📂 [CV Manager] Preparando subida con ruta absoluta: {:?}", abs_path);
 
+        // 0. Si el CV solicitado ya aparece entre las opciones guardadas de LinkedIn, seleccionarlo directamente
+        if crate::services::apply::dom::select_saved_resume_if_present(page, &basename).await {
+            tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+            let attached = crate::services::apply::dom::read_attached_resume_filename(page).await;
+            if let Some(ref att) = attached {
+                if att.trim().eq_ignore_ascii_case(&basename) {
+                    println!("      🎯 CV seleccionado directamente desde las opciones guardadas de LinkedIn: {}", basename);
+                    return Ok(Some(basename));
+                }
+            }
+        }
+
         // Is the right resume already attached? Read the filename LinkedIn actually shows
         // rather than matching `.jobs-document-card__title` — that class is hashed now and
         // the stale selector is precisely what let a wrong CV through (incident 2026-08-18).
@@ -472,6 +484,15 @@ impl ResumeManager {
 
         match page.execute(params).await {
             Ok(_) => {
+                // Dispatch synthetic events so React / LinkedIn picks up the file change
+                let trigger_events_script = r#"(() => {
+                    const inputs = Array.from(document.querySelectorAll("input[type='file']"));
+                    inputs.forEach(inp => {
+                        inp.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                    });
+                })()"#;
+                let _ = page.evaluate(trigger_events_script).await;
                 println!("      ✅ File uploaded exitosamente: {}", basename);
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 Ok(Some(basename))

@@ -739,16 +739,62 @@ pub async fn text_visible_on_page(page: &Page, needle: &str) -> bool {
 /// kept a previously-attached document instead of accepting the new upload.
 pub async fn read_attached_resume_filename(page: &Page) -> Option<String> {
     let script = r#"(() => {
-        const candidates = Array.from(document.querySelectorAll('span, p'));
+        function isVisible(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }
+        
+        // 1. Check selected / checked resume cards first
+        const selectedCards = Array.from(document.querySelectorAll('.jobs-document-card, [class*="resume"], [class*="document"], label, li, div[role="radio"]'))
+            .filter(c => isVisible(c) && (c.querySelector('input:checked, [aria-checked="true"]') || c.classList.contains('is-selected') || c.classList.contains('selected')));
+            
+        for (const c of selectedCards) {
+            const text = (c.innerText || c.textContent || '').trim();
+            const match = text.match(/([a-zA-Z0-9_\-\.]+\.pdf)/i);
+            if (match && match[1].length > 4) {
+                return match[1];
+            }
+        }
+
+        // 2. Check all visible text elements for any .pdf filename mention
+        const candidates = Array.from(document.querySelectorAll('span, p, div, label, h3, h4, a'));
         for (const el of candidates) {
-            const text = (el.innerText || '').trim();
-            if (/\.pdf$/i.test(text) && text.length > 4 && text.length < 150) {
-                return text;
+            if (!isVisible(el)) continue;
+            const text = (el.innerText || el.textContent || '').trim();
+            const match = text.match(/([a-zA-Z0-9_\-\.]+\.pdf)/i);
+            if (match && match[1].length > 4 && match[1].length < 150) {
+                return match[1];
             }
         }
         return null;
     })()"#;
     page.evaluate(script).await.ok().and_then(|r| r.into_value::<Option<String>>().ok()).flatten()
+}
+
+/// Searches LinkedIn's rendered saved resume cards / options for the target resume filename
+/// (e.g. "CV_D_EN_Jesus_Coronado.pdf") and clicks it if found.
+pub async fn select_saved_resume_if_present(page: &Page, target_filename: &str) -> bool {
+    let script = format!(
+        r#"(() => {{
+            function isVisible(el) {{ return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }}
+            const target = {target:?}.toLowerCase();
+            const containers = Array.from(document.querySelectorAll('label, div[role="radio"], .jobs-document-card, [class*="document-card"], [class*="resume-card"], li'));
+            for (const c of containers) {{
+                if (!isVisible(c)) continue;
+                const text = (c.innerText || c.textContent || '').toLowerCase();
+                if (text.includes(target)) {{
+                    const radio = c.querySelector('input[type="radio"], input[type="checkbox"]');
+                    if (radio) {{
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('input', {{ bubbles: true, composed: true }}));
+                        radio.dispatchEvent(new Event('change', {{ bubbles: true, composed: true }}));
+                    }}
+                    c.click();
+                    return true;
+                }}
+            }}
+            return false;
+        }})()"#,
+        target = target_filename
+    );
+    page.evaluate(script).await.ok().and_then(|r| r.into_value::<bool>().ok()).unwrap_or(false)
 }
 
 /// Clicks LinkedIn's "replace / remove resume" control so a new file input appears.
