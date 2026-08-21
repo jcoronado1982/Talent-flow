@@ -50,6 +50,26 @@ const GUEST_BYPASS_LABELS: &[&str] = &[
     "Apply without an account", "Continue as guest", "Guest checkout", "Apply as guest",
     "Skip and apply", "Aplicar sin cuenta", "Continuar como invitado", "Postular sin registrarme",
 ];
+// Chrome runs the persistent, already-authenticated profile (see services/browser.rs), so an
+// OAuth "with Google" control is always faster and more reliable than hand-filling a signup/
+// registration form: no email/password to invent, no email-verification step to get stuck on.
+// Checked first, every step, ahead of any manual form fill — mirrors the priority the user
+// asked for after watching the bot fill a registration form that had a Google button sitting
+// right on it while the browser was already signed in.
+const GOOGLE_AUTH_LABELS: &[&str] = &[
+    "Continue with Google",
+    "Sign up with Google",
+    "Sign in with Google",
+    "Log in with Google",
+    "Apply with Google",
+    "Register with Google",
+    "Continuar con Google",
+    "Regístrate con Google",
+    "Registrarse con Google",
+    "Iniciar sesión con Google",
+    "Iniciar sesion con Google",
+    "Aplicar con Google",
+];
 
 /// Takes control of an external ATS tab (Workday/Greenhouse/Lever/etc.) opened after
 /// clicking LinkedIn's "Apply" button, and tries to complete the application.
@@ -64,10 +84,16 @@ pub async fn handle_external_application(
     dry_run: bool,
 ) -> Result<FlowResult> {
     let url = page.url().await.ok().flatten().unwrap_or_default();
-    println!("   🚀 Starting External Engine for: {}", url);
+    println!("   🚀 Starting External Engine (AI Model: {}) for: {}", ai_client.gemini_model(), url);
     let _ = db.update_job_status(ctx.id, &JobStatusUpdate::new("Applying").error(format!("External Flow: {}", url)));
 
     const MAX_STEPS: u32 = 8;
+    // Cap Google-auth clicks so a persistent header/nav "Sign in with Google" link (unrelated to
+    // the actual application flow) can't get clicked every single step and burn all MAX_STEPS
+    // without the bot ever reaching the real form. 2 attempts covers the legitimate two-click
+    // flow (initial button + account picker if it redirects back to the same page).
+    const MAX_GOOGLE_AUTH_ATTEMPTS: u32 = 2;
+    let mut google_auth_attempts = 0u32;
 
     // Give a client-rendered ATS time to mount its form before concluding there isn't one.
     let initial = dom::wait_for_form_inputs(page, 2, std::time::Duration::from_secs(20)).await;
@@ -76,11 +102,28 @@ pub async fn handle_external_application(
     for step in 1..=MAX_STEPS {
         let _ = page.evaluate("window.scrollTo(0, 500)").await;
 
+        if google_auth_attempts < MAX_GOOGLE_AUTH_ATTEMPTS && dom::click_by_text(page, GOOGLE_AUTH_LABELS).await? {
+            google_auth_attempts += 1;
+            println!("      [External] 🔵 Paso {}: botón de Google detectado — usando la sesión ya autenticada en vez de llenar el registro a mano.", step);
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if check_success(page).await {
+                println!("      🎉 [External] La autenticación con Google completó la postulación de inmediato.");
+                let _ = db.update_job_status(ctx.id, &applied_update(ctx).error("Autenticado y postulado vía Google OAuth (sesión ya iniciada)."));
+                return Ok(FlowResult::Submitted);
+            }
+            // Google auth suele redirigir al formulario real, que puede montarse por JS.
+            // Esperamos a que aparezcan campos en vez de asumir que 3 s bastan.
+            dom::wait_for_form_inputs(page, 2, std::time::Duration::from_secs(12)).await;
+            continue; // Re-read the page fresh next iteration.
+        }
+
         let mut on_form = dom::count_form_inputs(page).await >= 2;
         if !on_form {
             println!("      [External] Step {}: buscando botón Apply...", step);
             if dom::click_by_text(page, APPLY_LABELS).await? {
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                // Asentamiento corto para descartar rápido el caso de "un solo clic"
+                // (botones Apply que ya envían la postulación y no abren formulario).
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
                 // Some ATS "Apply Now" buttons are themselves a one-click submit (no
                 // further form) — verify before assuming we just navigated to a form.
@@ -90,9 +133,14 @@ pub async fn handle_external_application(
                     return Ok(FlowResult::Submitted);
                 }
 
-                on_form = dom::count_form_inputs(page).await >= 2;
+                // Espera adaptativa en vez de un sleep fijo: muchos ATS redirigen y montan el
+                // formulario por JS, y con 2 s fijos se concluía "aquí no hay formulario" y se
+                // quemaba el paso entero buscando otro botón Apply que ya no existía. Devuelve
+                // apenas aparecen los campos, así que un sitio rápido no paga la espera.
+                let found = dom::wait_for_form_inputs(page, 2, std::time::Duration::from_secs(12)).await;
+                on_form = found >= 2;
                 if on_form {
-                    println!("      [External] Formulario encontrado tras clic en Apply.");
+                    println!("      [External] Formulario encontrado tras clic en Apply ({} campos).", found);
                 }
             }
         }
@@ -153,12 +201,15 @@ pub async fn handle_external_application(
                 println!("      [External] Sin mensaje final todavía, continuando con pasos siguientes...");
             } else if dom::click_by_text(page, NEXT_LABELS).await? {
                 println!("      ➡️ [External] Paso {} completado. Clic en 'Next / Siguiente' para continuar...", step);
-                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                 if check_success(page).await {
                     println!("      🎉 [External] ¡Postulación externa completada y confirmada!");
                     let _ = db.update_job_status(ctx.id, &applied_update(ctx).error("Postulación enviada en portal externo exitosamente."));
                     return Ok(FlowResult::Submitted);
                 }
+                // El paso siguiente del asistente suele montar sus campos por JS tras la
+                // transición; esperamos a que aparezcan en vez de dar por perdido el paso.
+                dom::wait_for_form_inputs(page, 2, std::time::Duration::from_secs(10)).await;
                 continue;
             }
         }

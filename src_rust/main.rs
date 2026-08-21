@@ -92,6 +92,16 @@ enum Commands {
         #[arg(long, default_value = "user_data_safe")]
         profile: String,
     },
+    /// Abre Chrome en modo humano (perfil persistente, puerto CDP 9222) y lo deja abierto
+    /// para que un cliente MCP (chrome-devtools-mcp) se conecte con --browserUrl y lo controle
+    /// directamente. Termina cuando aparece debug/close_browser.signal o pasan 30 minutos.
+    DebugBrowser {
+        #[arg(long, default_value = "user_data_safe")]
+        profile: String,
+        /// URL inicial a abrir (opcional)
+        #[arg(long)]
+        url: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -312,6 +322,35 @@ async fn main() -> Result<()> {
             }
 
             services::browser::close_browser(browser, handle).await;
+        }
+        Some(Commands::DebugBrowser { profile, url }) => {
+            let profile_path = std::env::current_dir()?.join(&profile);
+            std::fs::create_dir_all(&profile_path)?;
+            let signal_path = std::env::current_dir()?.join("debug").join("close_browser.signal");
+            std::fs::create_dir_all(signal_path.parent().unwrap())?;
+            let _ = std::fs::remove_file(&signal_path);
+
+            println!("🔎 Abriendo Chrome en modo humano sobre el perfil '{}' (puerto CDP 9222)...", profile);
+            let (browser, handle) = services::browser::launch_browser_with_profile(&profile_path).await?;
+            let page = browser.new_page(url.as_deref().unwrap_or("about:blank")).await?;
+            let _ = services::browser::inject_stealth_scripts(&page).await;
+
+            println!("✅ Chrome listo en http://127.0.0.1:9222 — conecta un cliente MCP con --browserUrl http://127.0.0.1:9222");
+            println!("🛑 Para cerrarlo: touch debug/close_browser.signal  (o espera 30 minutos de inactividad)");
+
+            let max_wait_secs: u64 = 30 * 60;
+            let mut waited = 0u64;
+            while waited < max_wait_secs {
+                if signal_path.exists() {
+                    println!("🛑 Señal de cierre detectada.");
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                waited += 2;
+            }
+            let _ = std::fs::remove_file(&signal_path);
+            services::browser::close_browser(browser, handle).await;
+            println!("✅ Chrome cerrado.");
         }
         Some(Commands::Apply { dry_run }) => {
             let mode = if dry_run { "AUDITORÍA (dry-run)" } else { "REAL (enviará aplicaciones)" };

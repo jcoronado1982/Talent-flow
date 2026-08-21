@@ -54,7 +54,8 @@ pub async fn run_apply_bot(
 
     let (browser, handle) = crate::services::browser::launch_authenticated_browser().await?;
     let page = browser.new_page("about:blank").await?;
-    let ai_client = AiClient::with_profile(Some(&profile));
+    let ai_client = AiClient::with_profile(Some(&profile)).with_custom_model("gemini-3.7-flash");
+    println!("🤖 [Apply Bot] Usando modelo especializado '{}' para postulaciones (LinkedIn & Externas)...", ai_client.gemini_model());
     let resume_manager = ResumeManager::new(base_dir.clone(), profile.clone());
     let profile_skills = profile.skills.clone();
 
@@ -229,7 +230,8 @@ async fn process_job(
             applied_currency: Some(salary_curr),
         };
 
-        let result = external_flow::handle_external_application(page, db, ai_client, resume_manager, &mut ctx, profile_skills, dry_run).await?;
+        let ext_ai_client = ai_client.with_custom_model("claude-sonnet-5");
+        let result = external_flow::handle_external_application(page, db, &ext_ai_client, resume_manager, &mut ctx, profile_skills, dry_run).await?;
         match result {
             FlowResult::Submitted => {
                 println!("   🎉 [External] Application Successful!");

@@ -50,6 +50,10 @@ pub struct PersonalInfo {
 pub struct AiConfig {
     pub provider: String,
     pub cloud_model: Option<String>,
+    #[serde(default)]
+    pub openai_model: Option<String>,
+    #[serde(default)]
+    pub anthropic_model: Option<String>,
     pub local_model: Option<String>,
     pub local_url: Option<String>,
     pub wasp_url: Option<String>,

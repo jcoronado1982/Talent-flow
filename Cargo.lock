@@ -1989,6 +1989,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "axum",
+ "base64",
  "cbc",
  "chromiumoxide",
  "chrono",

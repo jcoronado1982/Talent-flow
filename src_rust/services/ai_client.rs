@@ -6,7 +6,22 @@ use serde_json::{json, Value};
 pub struct AiClient {
     client: reqwest::Client,
     gemini_api_key: Option<String>,
+    /// Modelo activo. `with_custom_model` lo sobrescribe con el modelo que se cambia a mano
+    /// en los procesadores, y puede ser de cualquier proveedor (Claude, GPT o Gemini): el
+    /// ruteo se decide por el nombre.
     gemini_model: String,
+    /// El modelo Gemini REAL de la configuración (`GEMINI_MODEL` / `cloud_model`), intacto.
+    ///
+    /// Sin esto, el fallback a Gemini reutilizaba `gemini_model` — que `with_custom_model` ya
+    /// había pisado con, por ejemplo, "claude-sonnet-5" — y armaba la URL
+    /// `…/models/claude-sonnet-5:generateContent`, un 404 garantizado. El escalón Gemini del
+    /// cascade nunca podía funcionar cuando el modelo activo era de otro proveedor.
+    gemini_model_configured: String,
+    openai_api_key: Option<String>,
+    openai_model: String,
+    anthropic_api_key: Option<String>,
+    anthropic_model: String,
+    provider: String,
     wasp_url: String,
     local_ai_url: String,
     local_ai_model: String,
@@ -45,6 +60,79 @@ struct GeminiCandidate {
 #[derive(Deserialize)]
 struct GeminiResponse {
     candidates: Option<Vec<GeminiCandidate>>,
+}
+
+#[derive(Serialize)]
+struct AnthropicMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct AnthropicPayload {
+    model: String,
+    max_tokens: u32,
+    messages: Vec<AnthropicMessage>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicContentBlock {
+    #[serde(rename = "type")]
+    content_type: String,
+    text: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicResponse {
+    content: Option<Vec<AnthropicContentBlock>>,
+    error: Option<Value>,
+}
+
+#[derive(Serialize)]
+struct OpenAiResponsesPayload {
+    model: String,
+    input: String,
+}
+
+#[derive(Deserialize)]
+struct OpenAiResponseOutputContent {
+    #[serde(rename = "type")]
+    content_type: Option<String>,
+    text: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiResponseOutput {
+    content: Option<Vec<OpenAiResponseOutputContent>>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiResponsesResponse {
+    output: Option<Vec<OpenAiResponseOutput>>,
+    error: Option<Value>,
+}
+
+#[derive(Serialize)]
+struct OpenAiChatPayload {
+    model: String,
+    messages: Vec<OllamaChatMessage>,
+    temperature: f32,
+}
+
+#[derive(Deserialize)]
+struct OpenAiChatChoiceMessage {
+    content: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiChatChoice {
+    message: Option<OpenAiChatChoiceMessage>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiChatResponse {
+    choices: Option<Vec<OpenAiChatChoice>>,
+    error: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -102,7 +190,28 @@ impl AiClient {
         let ai_config = profile.and_then(|p| p.ai_config.as_ref());
 
         let gemini_key = std::env::var("GEMINI_API_KEY").ok().filter(|s| !s.is_empty());
-        let gemini_model = std::env::var("GEMINI_MODEL").ok().or_else(|| ai_config.and_then(|c| c.cloud_model.clone())).unwrap_or_else(|| "gemini-1.5-pro".to_string());
+        let gemini_model = std::env::var("GEMINI_MODEL")
+            .ok()
+            .or_else(|| ai_config.and_then(|c| c.cloud_model.clone()))
+            .unwrap_or_else(|| "gemini-3-flash-preview".to_string());
+
+        let openai_key = std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty());
+        let openai_model = std::env::var("OPENAI_MODEL")
+            .ok()
+            .or_else(|| ai_config.and_then(|c| c.openai_model.clone()))
+            .unwrap_or_else(|| "gpt-5.6-terra".to_string());
+
+        let anthropic_key = std::env::var("ANTHROPIC_API_KEY").ok().filter(|s| !s.is_empty());
+        let anthropic_model = std::env::var("ANTHROPIC_MODEL")
+            .ok()
+            .or_else(|| ai_config.and_then(|c| c.anthropic_model.clone()))
+            .unwrap_or_else(|| "claude-sonnet-5".to_string());
+
+        let provider = std::env::var("AI_PROVIDER")
+            .ok()
+            .or_else(|| ai_config.map(|c| c.provider.clone()))
+            .unwrap_or_else(|| "gemini".to_string());
+
         let wasp_url = std::env::var("WASP_URL").ok().or_else(|| ai_config.and_then(|c| c.wasp_url.clone())).unwrap_or_else(|| "http://localhost:3000".to_string());
         let local_ai_url = std::env::var("LOCAL_AI_URL").ok().or_else(|| ai_config.and_then(|c| c.local_url.clone())).unwrap_or_else(|| "http://localhost:11434".to_string());
         let local_ai_model = std::env::var("LOCAL_AI_MODEL").ok().or_else(|| ai_config.and_then(|c| c.local_model.clone())).unwrap_or_else(|| "llama3".to_string());
@@ -113,11 +222,98 @@ impl AiClient {
                 .build()
                 .unwrap_or_default(),
             gemini_api_key: gemini_key,
+            gemini_model_configured: gemini_model.clone(),
             gemini_model,
+            openai_api_key: openai_key,
+            openai_model,
+            anthropic_api_key: anthropic_key,
+            anthropic_model,
+            provider,
             wasp_url,
             local_ai_url,
             local_ai_model,
         }
+    }
+
+    pub fn gemini_model(&self) -> &str {
+        &self.gemini_model
+    }
+
+    pub fn with_custom_model(&self, model: &str) -> Self {
+        let mut clone = self.clone();
+        clone.gemini_model = model.to_string();
+        clone
+    }
+
+    pub async fn query_llm(&self, prompt: &str) -> Result<String> {
+        self.query_llm_with_model(prompt, None).await
+    }
+
+    pub async fn query_llm_with_model(&self, prompt: &str, custom_model: Option<&str>) -> Result<String> {
+        let model = custom_model.unwrap_or(&self.gemini_model);
+
+        // 1. Check if model name or provider specifies Claude / Anthropic
+        if model.contains("claude") || model.contains("anthropic") || self.provider.eq_ignore_ascii_case("anthropic") || self.provider.eq_ignore_ascii_case("claude") {
+            if let Some(ref key) = self.anthropic_api_key {
+                let actual_model = if model.contains("claude") { model } else { &self.anthropic_model };
+                println!("🤖 [AI Client] Consultando Claude API ({}) ...", actual_model);
+                match self.call_anthropic(prompt, key, actual_model).await {
+                    Ok(text) => return Ok(text),
+                    Err(e) => eprintln!("⚠️ [AI Client] Error con Claude API: {}. Intentando fallback...", e),
+                }
+            }
+        }
+
+        // 2. Check if model name or provider specifies OpenAI / ChatGPT / Terra
+        if model.contains("gpt") || model.contains("o1") || model.contains("o3") || model.contains("o4") || model.contains("terra") || self.provider.eq_ignore_ascii_case("openai") || self.provider.eq_ignore_ascii_case("chatgpt") {
+            if let Some(ref key) = self.openai_api_key {
+                let actual_model = if model.contains("gpt") || model.contains("terra") { model } else { &self.openai_model };
+                println!("🤖 [AI Client] Consultando OpenAI API ({}) ...", actual_model);
+                match self.call_openai(prompt, key, actual_model).await {
+                    Ok(text) => return Ok(text),
+                    Err(e) => eprintln!("⚠️ [AI Client] Error con OpenAI API: {}. Intentando fallback...", e),
+                }
+            }
+        }
+
+        // 3. Try Gemini
+        if let Some(ref key) = self.gemini_api_key {
+            let actual_model = if model.contains("gemini") || model.contains("gemma") { model } else { &self.gemini_model_configured };
+            println!("🤖 [AI Client] Consultando Gemini API ({}) ...", actual_model);
+            match self.call_gemini_with_model(prompt, key, actual_model).await {
+                Ok(text) => return Ok(text),
+                Err(e) => eprintln!("⚠️ [AI Client] Error con Gemini API: {}. Intentando fallback...", e),
+            }
+        }
+
+        // 4. Fallback across other providers if primary didn't succeed
+        if let Some(ref key) = self.anthropic_api_key {
+            if !model.contains("claude") {
+                println!("🤖 [AI Client] Fallback a Claude API ({})...", self.anthropic_model);
+                if let Ok(text) = self.call_anthropic(prompt, key, &self.anthropic_model).await {
+                    return Ok(text);
+                }
+            }
+        }
+
+        if let Some(ref key) = self.openai_api_key {
+            if !model.contains("gpt") && !model.contains("terra") {
+                println!("🤖 [AI Client] Fallback a OpenAI API ({})...", self.openai_model);
+                if let Ok(text) = self.call_openai(prompt, key, &self.openai_model).await {
+                    return Ok(text);
+                }
+            }
+        }
+
+        // 5. Fallback to Steel Wasp
+        println!("🤖 [AI Client] Fallback a Steel Wasp en {}...", self.wasp_url);
+        if let Ok(text) = self.call_wasp(prompt).await {
+            return Ok(text);
+        }
+
+        // 6. Fallback to local Ollama
+        println!("🤖 [AI Client] Fallback a modelo local (Ollama)...");
+        self.call_local(prompt).await
     }
 
     pub async fn analyze_job(&self, role: &str, company: &str, requirements: &str) -> Result<AnalysisResult> {
@@ -135,41 +331,16 @@ impl AiClient {
             base_prompt, profile_content, role, company, requirements
         );
 
-        // 1. Si hay Gemini API Key configurada, usar Gemini directamente
-        if let Some(ref api_key) = self.gemini_api_key {
-            println!("🤖 [AI Client] Consultando Gemini API ({}) para '{}' en '{}'...", self.gemini_model, role, company);
-            match self.call_gemini(&prompt, api_key).await {
-                Ok(raw_text) => {
-                    return self.parse_json_response(&raw_text, role, company);
-                }
-                Err(e) => {
-                    eprintln!("⚠️ [AI Client] Error con Gemini API: {}. Intentando fallback...", e);
-                }
-            }
-        }
-
-        // 2. Fallback a Steel Wasp si está disponible
-        println!("🤖 [AI Client] Consultando Steel Wasp en {}...", self.wasp_url);
-        match self.call_wasp(&prompt).await {
+        match self.query_llm(&prompt).await {
             Ok(raw_text) => {
                 return self.parse_json_response(&raw_text, role, company);
             }
             Err(e) => {
-                eprintln!("⚠️ [AI Client] Error con Steel Wasp: {}. Probando modelo local (Ollama)...", e);
+                eprintln!("⚠️ [AI Client] Error en consulta a LLMs: {}. Usando análisis heurístico...", e);
             }
         }
 
-        // 3. Fallback a modelo local vía Ollama (paridad con LocalLLMClient de Python)
-        match self.call_local(&prompt).await {
-            Ok(raw_text) => {
-                return self.parse_json_response(&raw_text, role, company);
-            }
-            Err(e) => {
-                eprintln!("⚠️ [AI Client] Error con modelo local: {}. Usando análisis heurístico...", e);
-            }
-        }
-
-        // 4. Fallback Heurístico si no hay conexión a internet o fallan todos los LLMs
+        // Fallback Heurístico si no hay conexión a internet o fallan todos los LLMs
         let extracted_skills = crate::services::Normalizer::extract_skills_heuristic(requirements);
         let score = if !extracted_skills.is_empty() { 75.0 } else { 50.0 };
         let status = if score >= 60.0 { "Matched" } else { "Discarded" };
@@ -228,6 +399,123 @@ impl AiClient {
         Ok(text)
     }
 
+    async fn call_anthropic(&self, prompt: &str, api_key: &str, model: &str) -> Result<String> {
+        let endpoint = "https://api.anthropic.com/v1/messages";
+        let payload = AnthropicPayload {
+            model: model.to_string(),
+            max_tokens: 4096,
+            messages: vec![AnthropicMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+            }],
+        };
+
+        let res = self
+            .client
+            .post(endpoint)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .context("Fallo en solicitud HTTP a Anthropic API")?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("Anthropic API HTTP {}: {}", status, text));
+        }
+
+        let body: AnthropicResponse = res.json().await.context("Error decodificando respuesta de Anthropic")?;
+        if let Some(err) = body.error {
+            return Err(anyhow::anyhow!("Anthropic error: {:?}", err));
+        }
+
+        let text = body
+            .content
+            .and_then(|c| c.into_iter().find(|b| b.content_type == "text" || b.text.is_some()))
+            .and_then(|b| b.text)
+            .unwrap_or_default();
+
+        Ok(text)
+    }
+
+    async fn call_openai(&self, prompt: &str, api_key: &str, model: &str) -> Result<String> {
+        // First try OpenAI /v1/responses endpoint
+        let endpoint = "https://api.openai.com/v1/responses";
+        let payload = OpenAiResponsesPayload {
+            model: model.to_string(),
+            input: prompt.to_string(),
+        };
+
+        let res = self
+            .client
+            .post(endpoint)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await;
+
+        if let Ok(response) = res {
+            if response.status().is_success() {
+                if let Ok(body) = response.json::<OpenAiResponsesResponse>().await {
+                    if let Some(outputs) = body.output {
+                        for out in outputs {
+                            if let Some(contents) = out.content {
+                                for c in contents {
+                                    if let Some(t) = c.text {
+                                        if !t.trim().is_empty() {
+                                            return Ok(t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback to /v1/chat/completions endpoint
+        let endpoint = "https://api.openai.com/v1/chat/completions";
+        let payload = OpenAiChatPayload {
+            model: model.to_string(),
+            messages: vec![OllamaChatMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+            }],
+            temperature: 0.2,
+        };
+
+        let res = self
+            .client
+            .post(endpoint)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .context("Fallo en solicitud HTTP a OpenAI API")?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("OpenAI API HTTP {}: {}", status, text));
+        }
+
+        let body: OpenAiChatResponse = res.json().await.context("Error decodificando respuesta de OpenAI")?;
+        let text = body
+            .choices
+            .and_then(|c| c.into_iter().next())
+            .and_then(|c| c.message)
+            .and_then(|m| m.content)
+            .unwrap_or_default();
+
+        Ok(text)
+    }
+
     async fn call_wasp(&self, prompt: &str) -> Result<String> {
         let endpoint = format!("{}/api/prompt", self.wasp_url);
         let payload = WaspPromptPayload {
@@ -268,6 +556,7 @@ impl AiClient {
                     "type": f.field_type,
                     "options": f.options,
                     "error": f.error,
+                    "required": f.required,
                 })
             })
             .collect();
@@ -299,7 +588,16 @@ impl AiClient {
              4. JUICIO PROFESIONAL: SOLO para preguntas de años de experiencia en una tecnología ausente del PROFILE responde \"0\". Nunca uses \"0\" ni un número arbitrario para datos de contacto, ubicación, fechas o preferencias.\n\
              5. UBICACIÓN/CIUDAD: cualquier campo de location/city debe responderse con la location del perfil, escrita como texto (ej. \"Medellín, Colombia\"). Nunca \"N/A\" ni un número.\n\
              6. OBJETIVO PRINCIPAL: que la aplicación se pueda enviar; no dejes campos obligatorios sin responder.{salary_instruction}\n\
-             7. Para \"select\", \"radio\" o \"checkbox\", usa EXACTAMENTE una de las \"options\" dadas.\n\n\
+             7. Para \"select\", \"radio\" o \"checkbox\", usa EXACTAMENTE una de las \"options\" dadas.\n\
+             8. CAMPOS OBLIGATORIOS (\"required\": true): tienen PRIORIDAD y NO pueden quedar vacíos, \
+             porque un solo obligatorio en blanco hace que el portal rechace todo el formulario. \
+             Orden para resolverlos: (a) busca el dato en el PROFILE; (b) si el PROFILE no lo trae, \
+             deduce la respuesta más razonable y profesional a partir del contexto de la vacante y \
+             del perfil, y respóndela — es preferible una respuesta sensata a dejarlo vacío. \
+             ÚNICA EXCEPCIÓN: los datos de contacto e identidad de la regla 3 (teléfono, email, nombre, \
+             documento, enlaces) NUNCA se inventan, ni siquiera siendo obligatorios.\n\
+             9. Los campos con \"required\": false que no puedas resolver con el PROFILE, déjalos vacíos \
+             en vez de inventar: no bloquean el envío.\n\n\
              FORMAT: Responde ÚNICAMENTE un objeto JSON plano {{\"<label exacto>\": \"<respuesta>\", ...}}. Nada de texto fuera del JSON.",
             profile = profile_yaml,
             location = location_context,
@@ -309,19 +607,7 @@ impl AiClient {
             salary_instruction = salary_instruction,
         );
 
-        let raw_text = if let Some(ref api_key) = self.gemini_api_key {
-            self.call_gemini(&prompt, api_key).await
-        } else {
-            Err(anyhow::anyhow!("Gemini not configured"))
-        };
-
-        let raw_text = match raw_text {
-            Ok(t) => t,
-            Err(_) => match self.call_wasp(&prompt).await {
-                Ok(t) => t,
-                Err(_) => self.call_local(&prompt).await?,
-            },
-        };
+        let raw_text = self.query_llm(&prompt).await?;
 
         let clean_json = raw_text
             .trim()
@@ -385,17 +671,12 @@ impl AiClient {
              - Idioma detectado de la oferta: {lang}\n\
              - Descripción/requisitos:\n{description}\n\n\
              ARCHIVOS DE CV DISPONIBLES EN DISCO (elige EXACTAMENTE uno de esta lista):\n{list}\n\n\
-             CONVENCIÓN DE NOMBRES: CV_{{experiencia}}_{{ciudad}}_{{rol}}_{{tecnología}}_{{idioma}}_{{dueño}}.pdf\n\
-             - ciudad: B=Bogotá, M=Medellín\n\
-             - rol: L=Líder/Arquitecto/Manager/Principal, D=Desarrollador\n\
-             - tecnología: J=Java/Spring, C=C#/.NET/Azure/Angular, P=Python/Django/IA/ML\n\
-             - idioma: EN=inglés, ES=español\n\n\
-             PRIORIDAD AL ELEGIR (de más a menos importante):\n\
-             1. ROL: si la vacante es de arquitecto/líder/manager/principal usa L; si es de desarrollador usa D.\n\
-             2. TECNOLOGÍA: la tecnología dominante que pide la vacante.\n\
-             3. IDIOMA: EN si la oferta está en inglés, ES si está en español.\n\
-             4. CIUDAD: la de la vacante; si es remota o no se menciona, prefiere M.\n\
-             5. EXPERIENCIA: si hay varias variantes válidas, prefiere el número más alto.\n\n\
+             CONVENCIÓN DE NOMBRES: solo existen dos hojas de vida vigentes:\n\
+             - CV_D_EN_Jesus_Coronado.pdf → oferta en inglés\n\
+             - CV_D_ES_Jesus_Coronado.pdf → oferta en español\n\n\
+             CRITERIO ÚNICO: elige por el IDIOMA de la oferta. EN si está en inglés, ES si está en español.\n\
+             El cargo (desarrollador, líder, arquitecto, manager) NO cambia la elección: para todos\n\
+             se usa la misma hoja de vida, solo cambia el idioma.\n\n\
              FORMAT: responde ÚNICAMENTE un JSON {{\"file\": \"<nombre exacto de la lista>\", \"reason\": \"<10 palabras máx>\"}}.",
             role = role,
             company = company,
@@ -404,17 +685,9 @@ impl AiClient {
             list = candidates.iter().map(|c| format!("- {}", c)).collect::<Vec<_>>().join("\n"),
         );
 
-        let raw_text = if let Some(ref api_key) = self.gemini_api_key {
-            self.call_gemini(&prompt, api_key).await
-        } else {
-            Err(anyhow::anyhow!("Gemini not configured"))
-        };
-        let raw_text = match raw_text {
+        let raw_text = match self.query_llm(&prompt).await {
             Ok(t) => t,
-            Err(_) => match self.call_wasp(&prompt).await {
-                Ok(t) => t,
-                Err(_) => self.call_local(&prompt).await.ok()?,
-            },
+            Err(_) => return None,
         };
 
         let cleaned = raw_text
@@ -447,14 +720,16 @@ impl AiClient {
     /// from a closed vocabulary. Nothing site-specific is encoded here — that is the whole
     /// point: hardcoded label lists could never cover the number of ATS products in the
     /// wild, and each gap showed up as a silent "button not found".
-    pub async fn decide_next_action(
+    /// Arma el prompt del agente. Compartido por la ruta de solo-texto y la de visión, para
+    /// que el rescate con captura de pantalla razone con exactamente las mismas reglas.
+    fn build_agent_prompt(
         &self,
         goal: &str,
         profile_yaml: &str,
         snapshot: &crate::services::apply::agent::PageSnapshot,
         history: &[String],
         dry_run: bool,
-    ) -> Option<Value> {
+    ) -> Option<String> {
         let snapshot_json = serde_json::to_string_pretty(&serde_json::json!({
             "url": snapshot.url,
             "title": snapshot.title,
@@ -489,14 +764,14 @@ impl AiClient {
              - {{\"action\":\"select\",\"id\":\"tf_N\",\"text\":\"opción\"}}  elegir en un desplegable\n\
              - {{\"action\":\"check\",\"id\":\"tf_N\",\"checked\":true}}      marcar casilla/radio\n\
              - {{\"action\":\"click\",\"id\":\"tf_N\"}}                       pulsar botón o enlace\n\
-             - {{\"action\":\"upload_resume\"}}                              adjuntar el CV del candidato\n\
+             - {{\"action\":\"upload_resume\"}}                              adjuntar el CV del candidato (el motor en Rust elige y sube automáticamente el PDF correcto de la carpeta de CVs)\n\
              - {{\"action\":\"press_key\",\"id\":\"tf_N\",\"text\":\"Enter\"}} tecla sobre un campo\n\
              - {{\"action\":\"scroll\",\"y\":600}}                           desplazar la página\n\
              - {{\"action\":\"wait\",\"ms\":2000}}                           esperar a que cargue\n\
              - {{\"action\":\"navigate\",\"url\":\"https://...\"}}            ir a otra página\n\
              - {{\"action\":\"eval_js\",\"code\":\"return ...\"}}             ejecutar JavaScript propio en la página\n\
              - {{\"action\":\"done\",\"reason\":\"...\"}}                     la postulación YA fue enviada y confirmada\n\
-             - {{\"action\":\"needs_human\",\"reason\":\"...\"}}              no puedes continuar de forma segura\n\n\
+             - {{\"action\":\"needs_human\",\"reason\":\"...\"}}              no puedes continuar (falta dato obligatorio no presente en el perfil, captcha o grabadora de audio)\n\n\
              REGLAS CRÍTICAS (lee PRIMERO):\n\
              1. Usa SOLO ids 'tf_N' que aparezcan en el JSON de arriba. Nunca inventes un id.\n\
              2. TELÉFONO Y NOMBRES: El candidato es de Colombia (código +57). \
@@ -509,15 +784,15 @@ impl AiClient {
              Si preguntan 'years of experience', usa years_of_experience del perfil. \
              NO respondas 'needs_human' por estas preguntas.\n\
              4. ABORTO TEMPRANO: Si tras analizar la página detectas alguno de estos bloqueantes, \
-             responde 'needs_human' INMEDIATAMENTE sin intentar más acciones: \
-             (a) muro de login sin ruta de invitado, \
-             (b) captcha visual o reCAPTCHA, \
-             (c) grabadora de audio/voz/video (micrófono, 'Click to record', elementos <audio>/<video> para subir), \
-             (d) verificación por SMS/OTP. \
-             No desperdicies pasos intentando interactuar con estos elementos.\n\n\
+             responde 'needs_human' INMEDIATAMENTE: \
+             (a) captcha visual o reCAPTCHA, \
+             (b) grabadora de audio/voz/video obligatoria (micrófono, 'Click to record', elementos <audio>/<video> para subir), \
+             (c) verificación por SMS/OTP, \
+             (d) muro de login que NO tenga opción de invitado NI botón de 'Acceder con Google / Sign in with Google'. \
+             (NOTA: Si existe botón de Google o ruta de invitado, INTÉNTALO haciendo clic en él en vez de rendirte).\n\n\
              REGLAS GENERALES:\n\
              5. Datos personales (nombre, email, teléfono, documento, enlaces): copia EXACTO del PERFIL. Prohibido inventar.\n\
-             6. Una acción por respuesta. Prioriza: campos obligatorios vacíos > adjuntar CV > avanzar de paso (Next/Continue/Submit).\n\
+             6. Una acción por respuesta. Prioriza: campos obligatorios vacíos > adjuntar CV (usando 'upload_resume') > avanzar de paso (Next/Continue/Submit).\n\
              7. No repitas una acción que ya está en el historial si la página no cambió; prueba otra cosa.\n\
              8. NUNCA uses 'type' en un campo que ya tiene su valor puesto (mira 'value' en el JSON). \
              Si todos los campos requeridos tienen valor, pulsa el botón 'Next', 'Continue', 'Submit' o 'Apply' para avanzar.\n\
@@ -526,7 +801,7 @@ impl AiClient {
              selectores de fecha, subidas por arrastrar-soltar, o simplemente inspeccionar la página. \
              Escribe el cuerpo de una función JavaScript y usa 'return' para devolver lo que observes; \
              ese valor te llegará como observación en el siguiente turno.\n\n\
-             REGLAS PARA COMPONENTES DIFÍCILES:\n\
+             REGLAS PARA COMPONENTES DIFÍCILES Y LOGIN:\n\
              11. MENÚS DESPLEGABLES PERSONALIZADOS (react-select, combobox, listbox): \
              Paso A: usa 'type' para escribir el texto exacto (ej. 'Medellín'). \
              Paso B: en tu SIGUIENTE respuesta (otro turno), usa 'press_key' con 'Enter' sobre el MISMO campo para confirmar la opción. \
@@ -534,9 +809,7 @@ impl AiClient {
              12. RADIO/CHECKBOX ESCONDIDOS: Algunos portales usan 'div' o 'span' en lugar de <input type='radio'>. \
              Si ves preguntas de 'Yes' / 'No' que no reaccionan al verbo 'check', usa 'click' sobre el \
              id que corresponde exactamente al texto 'Yes' o 'No'.\n\
-             13. Ante un muro de login, primero explora de verdad (eval_js, scroll, navigate) buscando una \
-             ruta de invitado o un enlace de aplicación directa; solo responde 'needs_human' si realmente \
-             no hay camino sin credenciales.{dry_run_rule}\n\n\
+             13. AUTENTICACIÓN GOOGLE / INVITADO: Si la página es externa y muestra un botón de 'Acceder con Google', 'Sign in with Google' o 'Continue as Guest', USA 'click' sobre ese botón. La sesión de Google está activa en el navegador Chrome. Solo responde 'needs_human' si la autenticación requiere contraseña propia o usuario desconocido no presente en el perfil.{dry_run_rule}\n\n\
              FORMAT: responde ÚNICAMENTE el objeto JSON de la acción. Nada de texto fuera del JSON.",
             goal = goal,
             profile = profile_yaml,
@@ -545,26 +818,11 @@ impl AiClient {
             dry_run_rule = dry_run_rule,
         );
 
-        let raw = if let Some(ref api_key) = self.gemini_api_key {
-            // Intentar primero con gemini-3.7-flash para formularios externos
-            match self.call_gemini_with_model(&prompt, api_key, "gemini-3.7-flash").await {
-                Ok(t) => Ok(t),
-                Err(e) => {
-                    eprintln!("⚠️ [AI Client] gemini-3.7-flash no disponible ({}), usando fallback...", e);
-                    self.call_gemini(&prompt, api_key).await
-                }
-            }
-        } else {
-            Err(anyhow::anyhow!("Gemini not configured"))
-        };
-        let raw = match raw {
-            Ok(t) => t,
-            Err(_) => match self.call_wasp(&prompt).await {
-                Ok(t) => t,
-                Err(_) => self.call_local(&prompt).await.ok()?,
-            },
-        };
+        Some(prompt)
+    }
 
+    /// Extrae el objeto JSON de la accion de la respuesta cruda del modelo.
+    fn parse_action_json(raw: &str) -> Option<Value> {
         let cleaned = raw
             .trim()
             .trim_start_matches("```json")
@@ -580,6 +838,228 @@ impl AiClient {
                 _ => None,
             }
         })
+    }
+
+    pub async fn decide_next_action(
+        &self,
+        goal: &str,
+        profile_yaml: &str,
+        snapshot: &crate::services::apply::agent::PageSnapshot,
+        history: &[String],
+        dry_run: bool,
+    ) -> Option<Value> {
+        let prompt = self.build_agent_prompt(goal, profile_yaml, snapshot, history, dry_run)?;
+        let raw = self.query_llm(&prompt).await.ok()?;
+        Self::parse_action_json(&raw)
+    }
+
+    /// Ultimo recurso: el agente de texto ya se dio por vencido, asi que se le manda una
+    /// CAPTURA DE PANTALLA de la pagina junto al mismo contexto.
+    ///
+    /// Existe porque el DOM no siempre alcanza: hay controles pintados en canvas, widgets que
+    /// no exponen ni texto ni ARIA, y preguntas cuyo enunciado esta en una imagen. En esos
+    /// casos el agente devolvia 'needs_human' y la oferta se saltaba entera, cuando mirar la
+    /// pantalla habria bastado para resolverla.
+    pub async fn decide_next_action_with_vision(
+        &self,
+        goal: &str,
+        profile_yaml: &str,
+        snapshot: &crate::services::apply::agent::PageSnapshot,
+        history: &[String],
+        dry_run: bool,
+        stuck_reason: &str,
+        png_base64: &str,
+    ) -> Option<Value> {
+        let base = self.build_agent_prompt(goal, profile_yaml, snapshot, history, dry_run)?;
+        let prompt = format!(
+            "{base}\n\n\
+             --- ANALISIS VISUAL (ULTIMO RECURSO) ---\n\
+             El motor determinista y el agente de solo-texto YA FALLARON en esta pagina. Motivo: {stuck}\n\
+             Se adjunta una CAPTURA DE PANTALLA de la pagina tal como la ve un humano.\n\n\
+             Mira la imagen y compara con el JSON del DOM de arriba. Busca especificamente:\n\
+             - Controles visibles en la imagen que NO aparecen en el JSON (pintados en canvas, \
+             widgets sin texto ni ARIA, iconos sin etiqueta).\n\
+             - Mensajes de error o campos marcados en rojo que expliquen por que no avanza.\n\
+             - Preguntas cuyo enunciado esta en una imagen y por eso el DOM no lo tiene.\n\
+             - Casillas obligatorias (terminos y condiciones, consentimiento) que quedaron sin marcar.\n\n\
+             Elige UNA accion concreta que desatasque la postulacion, en el MISMO formato JSON. \
+             Los ids 'tf_N' siguen siendo los del JSON del DOM. Si de verdad no hay ninguna accion \
+             posible, recien ahi responde 'needs_human'.",
+            base = base,
+            stuck = stuck_reason,
+        );
+
+        let raw = self.query_llm_with_image(&prompt, png_base64).await.ok()?;
+        Self::parse_action_json(&raw)
+    }
+
+    /// Manda prompt + captura de pantalla al proveedor del modelo ACTIVO.
+    ///
+    /// Rutea por el nombre del modelo igual que `query_llm_with_model`: el modelo que aplica
+    /// se cambia a mano en los procesadores, así que cualquiera de los tres puede estar activo
+    /// y los tres tienen que saber mandar la imagen. Si el activo falla, se intenta con los
+    /// otros antes de rendirse — una captura solo se toma cuando ya no queda otra salida.
+    pub async fn query_llm_with_image(&self, prompt: &str, png_base64: &str) -> Result<String> {
+        let model = self.gemini_model.clone();
+        let mut errors: Vec<String> = Vec::new();
+
+        let wants_claude = model.contains("claude") || model.contains("anthropic") || self.provider.eq_ignore_ascii_case("anthropic");
+        let wants_openai = model.contains("gpt") || model.contains("terra") || self.provider.eq_ignore_ascii_case("openai");
+
+        if wants_claude {
+            if let Some(ref key) = self.anthropic_api_key {
+                let m = if model.contains("claude") { model.as_str() } else { self.anthropic_model.as_str() };
+                println!("      👁️  [AI Client] Analizando captura con Claude ({})...", m);
+                match self.call_anthropic_vision(prompt, png_base64, key, m).await {
+                    Ok(t) => return Ok(t),
+                    Err(e) => errors.push(format!("Claude: {}", e)),
+                }
+            }
+        }
+
+        if wants_openai {
+            if let Some(ref key) = self.openai_api_key {
+                let m = if model.contains("gpt") || model.contains("terra") { model.as_str() } else { self.openai_model.as_str() };
+                println!("      👁️  [AI Client] Analizando captura con OpenAI ({})...", m);
+                match self.call_openai_vision(prompt, png_base64, key, m).await {
+                    Ok(t) => return Ok(t),
+                    Err(e) => errors.push(format!("OpenAI: {}", e)),
+                }
+            }
+        }
+
+        if let Some(ref key) = self.gemini_api_key {
+            let m = if model.contains("gemini") || model.contains("gemma") { model.as_str() } else { self.gemini_model_configured.as_str() };
+            println!("      👁️  [AI Client] Analizando captura con Gemini ({})...", m);
+            match self.call_gemini_vision(prompt, png_base64, key, m).await {
+                Ok(t) => return Ok(t),
+                Err(e) => errors.push(format!("Gemini: {}", e)),
+            }
+        }
+
+        if !wants_claude {
+            if let Some(ref key) = self.anthropic_api_key {
+                match self.call_anthropic_vision(prompt, png_base64, key, &self.anthropic_model).await {
+                    Ok(t) => return Ok(t),
+                    Err(e) => errors.push(format!("Claude (fallback): {}", e)),
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!("ningún proveedor con visión respondió [{}]", errors.join(" | ")))
+    }
+
+    async fn call_anthropic_vision(&self, prompt: &str, png_base64: &str, api_key: &str, model: &str) -> Result<String> {
+        let payload = json!({
+            "model": model,
+            "max_tokens": 2048,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": png_base64 } },
+                    { "type": "text", "text": prompt }
+                ]
+            }]
+        });
+
+        let res = self
+            .client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .context("Fallo en solicitud de visión a Anthropic")?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("HTTP {}: {}", status, text.chars().take(300).collect::<String>()));
+        }
+
+        let body: AnthropicResponse = res.json().await.context("Respuesta de visión de Anthropic ilegible")?;
+        Ok(body
+            .content
+            .and_then(|c| c.into_iter().find(|b| b.content_type == "text" || b.text.is_some()))
+            .and_then(|b| b.text)
+            .unwrap_or_default())
+    }
+
+    async fn call_openai_vision(&self, prompt: &str, png_base64: &str, api_key: &str, model: &str) -> Result<String> {
+        let payload = json!({
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": prompt },
+                    { "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{}", png_base64) } }
+                ]
+            }]
+        });
+
+        let res = self
+            .client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .context("Fallo en solicitud de visión a OpenAI")?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("HTTP {}: {}", status, text.chars().take(300).collect::<String>()));
+        }
+
+        let body: OpenAiChatResponse = res.json().await.context("Respuesta de visión de OpenAI ilegible")?;
+        Ok(body
+            .choices
+            .and_then(|c| c.into_iter().next())
+            .and_then(|c| c.message)
+            .and_then(|m| m.content)
+            .unwrap_or_default())
+    }
+
+    async fn call_gemini_vision(&self, prompt: &str, png_base64: &str, api_key: &str, model: &str) -> Result<String> {
+        let endpoint = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        );
+        let payload = json!({
+            "contents": [{
+                "parts": [
+                    { "inline_data": { "mime_type": "image/png", "data": png_base64 } },
+                    { "text": prompt }
+                ]
+            }]
+        });
+
+        let res = self
+            .client
+            .post(&endpoint)
+            .json(&payload)
+            .send()
+            .await
+            .context("Fallo en solicitud de visión a Gemini")?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("HTTP {}: {}", status, text.chars().take(300).collect::<String>()));
+        }
+
+        let body: GeminiResponse = res.json().await.context("Respuesta de visión de Gemini ilegible")?;
+        Ok(body
+            .candidates
+            .and_then(|c| c.into_iter().next())
+            .and_then(|c| c.content)
+            .and_then(|c| c.parts)
+            .and_then(|p| p.into_iter().find_map(|part| part.text))
+            .unwrap_or_default())
     }
 
     async fn call_local(&self, prompt: &str) -> Result<String> {
@@ -780,6 +1260,12 @@ mod tests {
             client: reqwest::Client::new(),
             gemini_api_key: None,
             gemini_model: "test".to_string(),
+            gemini_model_configured: "test".to_string(),
+            openai_api_key: None,
+            openai_model: "gpt-5.6-terra".to_string(),
+            anthropic_api_key: None,
+            anthropic_model: "claude-sonnet-5".to_string(),
+            provider: "gemini".to_string(),
             wasp_url: "http://localhost:3000".to_string(),
             local_ai_url: "http://localhost:11434".to_string(),
             local_ai_model: "llama3".to_string(),

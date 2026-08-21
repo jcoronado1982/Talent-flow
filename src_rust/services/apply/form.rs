@@ -180,16 +180,28 @@ pub async fn fill_form(
 
     for field in &schema {
         let label_lower = field.label.to_lowercase();
-        let Some(mut ans) = get_answer_for_label(&field.label, &answers) else { continue };
-        if ans.trim().is_empty() {
+        let answer = get_answer_for_label(&field.label, &answers);
+        let blank = answer.as_ref().map(|a| a.trim().is_empty()).unwrap_or(true);
+        if blank {
             // A blank answer must never be "filled" — for choice fields, matching an
             // empty string against option text always matches the FIRST option
             // (every string contains ""), which would silently click a wrong,
             // unintended answer. Skip and let this surface as a stuck/Manual step
             // instead of picking a guess.
-            println!("      -> [SKIP] '{}' sin respuesta resuelta (posible etiqueta mal detectada).", field.label.chars().take(40).collect::<String>());
+            //
+            // Pero un campo OBLIGATORIO sin respuesta no se puede saltar en silencio: el
+            // portal va a rechazar el envío entero y el bot se quedaba reintentando el mismo
+            // paso sin saber por qué. Se reporta para que el agente (que ve la página real)
+            // lo resuelva en vez de darlo por perdido.
+            if field.required && field.value.trim().is_empty() {
+                println!("      -> ❗ '{}' es OBLIGATORIO y quedó sin respuesta; se releva al agente.", field.label.chars().take(40).collect::<String>());
+                needs_human.push(format!("{}: campo obligatorio sin respuesta resuelta", field.label));
+            } else {
+                println!("      -> [SKIP] '{}' sin respuesta resuelta (posible etiqueta mal detectada).", field.label.chars().take(40).collect::<String>());
+            }
             continue;
         }
+        let mut ans = answer.unwrap_or_default();
 
         let is_salary = SALARY_KEYWORDS.iter().any(|k| label_lower.contains(k));
         let is_years = YEARS_KEYWORDS.iter().any(|k| label_lower.contains(k));

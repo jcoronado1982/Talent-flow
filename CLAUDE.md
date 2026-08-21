@@ -61,3 +61,19 @@ Si el usuario te pregunta *"¿qué pasó?"*, *"¿por qué falló?"* o *"¿qué d
    * El estado del Supervisor (`OK` o `FAIL`).
    * El nombre de la cuenta auditada.
    * La cantidad exacta de ofertas procesadas y guardadas.
+
+---
+
+## 📚 DOCUMENTACIÓN DEL MOTOR DE POSTULACIÓN
+
+**Léelos antes de tocar `src_rust/services/apply/` o `ai_client.rs`.** Explican decisiones que no son evidentes desde el código y evitan "arreglar" cosas que son intencionales.
+
+| Documento | Qué cubre |
+| :--- | :--- |
+| **[`MOTOR_DE_RESOLUCION.md`](./MOTOR_DE_RESOLUCION.md)** | La cadena de resolución (DOM → perfil JSON → deducción → agente → visión), selección de CV, ruteo de modelos, esperas adaptativas y **bugs conocidos pendientes**. |
+| **[`ANALISIS_DOM_Y_LLENADO.md`](./ANALISIS_DOM_Y_LLENADO.md)** | Nivel DOM: por qué cada componente difícil (botones Sí/No, `<select>` de React, typeahead/autocompletar, campos obligatorios) fallaba y cómo se reconoce ahora. |
+
+### ⚠️ Dos cosas que parecen bugs y NO lo son
+
+1. **Los tres modelos hardcodeados** en `job_processor.rs` y `external_processor.rs` (`with_custom_model(...)`) son **intencionales**: el usuario los cambia a mano para probar proveedores. **No los conviertas en configuración** ni los "arregles" para que lean del `.env`.
+2. **`DEVELOPER_ONLY = true`** en `resume_manager.rs`: hoy solo existen dos CVs (inglés y español) y **los de Leader no se envían nunca**, aunque la vacante sea de líder. Toda la lógica legacy de ciudad/tecnología/experiencia se dejó intacta a propósito para poder revertirlo con el flag. **No la borres.**

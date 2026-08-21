@@ -28,6 +28,11 @@ pub struct FormField {
     #[serde(default)]
     pub value: String,
     pub error: Option<String>,
+    /// El portal exige este campo (atributo nativo, `aria-required`, o asterisco en la
+    /// etiqueta). Sin esto no se podía distinguir obligatorio de opcional, así que un campo
+    /// sin respuesta se saltaba igual en ambos casos y el ATS rechazaba el envío.
+    #[serde(default)]
+    pub required: bool,
     #[serde(default)]
     pub options: Vec<String>,
     #[serde(default)]
@@ -157,7 +162,7 @@ async fn suggestion_popup_match(page: &Page, field_id: &str) -> Option<String> {
 
             // 2. role=listbox / role=option — only when positioned against this input.
             for (const el of Array.from(document.querySelectorAll("[role='listbox']"))) {{
-                if (el.contains(input) || !isVisible(el)) continue;
+                if (el.contains(input) || !isVisible(el) || el.tagName.toLowerCase() === 'input' || el.children.length === 0) continue;
                 if (isNearInput(el)) return describe(el, 'listbox cercano');
             }}
             for (const el of Array.from(document.querySelectorAll("[role='option']"))) {{
@@ -188,6 +193,46 @@ async fn has_suggestion_popup(page: &Page, field_id: &str) -> bool {
     suggestion_popup_match(page, field_id).await.is_some()
 }
 
+/// Cuánto se espera a que un typeahead pinte su lista antes de tratar el campo como texto
+/// plano. Los autocompletar de los ATS externos (ciudad, país, universidad, empresa) casi
+/// siempre consultan la red: entre que se dispara el evento `input` y aparece la lista pasan
+/// típicamente 300–1500 ms.
+const SUGGESTION_POPUP_WAIT: Duration = Duration::from_millis(900);
+
+/// Espera a que aparezca la lista de sugerencias del campo.
+///
+/// Antes se preguntaba por el popup inmediatamente después de escribir, a los ~0 ms. Ningún
+/// typeahead con búsqueda por red alcanza a responder en ese tiempo, así que el campo se daba
+/// por "texto plano" y quedaba con el texto crudo escrito y ninguna opción seleccionada — que
+/// es justo lo que estos portales rechazan al enviar el formulario.
+///
+/// Devuelve apenas la lista aparece, así que un typeahead rápido no paga la espera completa;
+/// solo un campo de texto normal agota el presupuesto entero (una vez por campo).
+async fn wait_for_suggestion_popup(page: &Page, field_id: &str, timeout: Duration) -> bool {
+    let started = std::time::Instant::now();
+    loop {
+        if has_suggestion_popup(page, field_id).await {
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+}
+
+/// Dispara `blur` sobre un campo ya resuelto. Se hace al final y solo cuando se confirmó que
+/// el campo NO es un typeahead: muchos autocompletar cierran (y descartan) su lista al recibir
+/// blur, así que dispararlo junto con el `input` cerraba el desplegable que luego se buscaba.
+async fn blur_field(page: &Page, field_id: &str) {
+    let script = format!(
+        "(() => {{ const el = document.querySelector(\"[data-tf-id='{id}']\"); \
+         if (!el) return false; el.dispatchEvent(new Event('blur', {{ bubbles: true, composed: true }})); return true; }})()",
+        id = field_id,
+    );
+    let _ = page.evaluate(script).await;
+}
+
 /// Clicks the first visible suggestion-like row currently on screen — last-resort
 /// confirmation when ArrowDown+Enter didn't close the popup.
 async fn click_first_suggestion(page: &Page) -> bool {
@@ -204,12 +249,15 @@ async fn click_first_suggestion(page: &Page) -> bool {
     page.evaluate(script).await.ok().and_then(|r| r.into_value::<bool>().ok()).unwrap_or(false)
 }
 
-/// Fills any text-like field (text/email/tel/number/textarea). Always types with real
-/// keystrokes, then behaviorally probes for a suggestion popup — if one appears, drives
-/// it with the keyboard (falling back to a direct click) and only reports success once
-/// the popup is confirmed closed. This replaces the old up-front `is_combobox` gate,
-/// which silently broke once LinkedIn stopped reliably exposing combobox ARIA attributes
-/// (confirmed live: the City field's suggestion list opened but was never filled).
+/// Fills any text-like field (text/email/tel/number/textarea). Escribe el valor de una vez
+/// usando el setter nativo del prototipo (para que React/Vue/Angular registren el cambio en
+/// su estado interno, no solo en el DOM), luego **espera** hasta [`SUGGESTION_POPUP_WAIT`] a
+/// que aparezca una lista de sugerencias — si aparece, la maneja con el teclado (con clic
+/// directo como respaldo) y solo reporta éxito cuando confirma que la lista se cerró.
+///
+/// El sondeo es de comportamiento, no por atributos: reemplaza la vieja compuerta `is_combobox`,
+/// que se rompió en silencio cuando LinkedIn dejó de exponer los atributos ARIA de combobox
+/// (confirmado en vivo: la lista de sugerencias de Ciudad se abría pero nunca se llenaba).
 pub async fn fill_text_like_field(page: &Page, field_id: &str, value: &str) -> Result<FillOutcome> {
     let selector = format!("[data-tf-id='{}']", field_id);
     let element = match page.find_element(&selector).await {
@@ -244,7 +292,6 @@ pub async fn fill_text_like_field(page: &Page, field_id: &str, value: &str) -> R
             }}
             el.dispatchEvent(new Event('input', {{ bubbles: true, composed: true }}));
             el.dispatchEvent(new Event('change', {{ bubbles: true, composed: true }}));
-            el.dispatchEvent(new Event('blur', {{ bubbles: true, composed: true }}));
             return true;
         }})()"#,
         sel = selector,
@@ -252,8 +299,10 @@ pub async fn fill_text_like_field(page: &Page, field_id: &str, value: &str) -> R
     );
     let _ = page.evaluate(react_fill_script).await;
 
-    if !has_suggestion_popup(page, field_id).await {
-        // Plain text field, already filled correctly with clean value.
+    if !wait_for_suggestion_popup(page, field_id, SUGGESTION_POPUP_WAIT).await {
+        // Plain text field, already filled correctly with clean value. El blur va aquí,
+        // una vez descartado que sea un typeahead cuya lista se cerraría con él.
+        blur_field(page, field_id).await;
         return Ok(FillOutcome::Filled);
     }
 
@@ -379,11 +428,16 @@ pub async fn fill_select_field(page: &Page, field_id: &str, answer: &str) -> Res
                     break;
                 }}
             }}
-            if (!matched && options.length > 1) matched = options[1];
             if (!matched) return false;
             if (el.tagName === 'SELECT') {{
-                el.value = matched.value || matched.getAttribute('value') || '';
-                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+                if (nativeSetter) {{
+                    nativeSetter.call(el, matched.value || matched.getAttribute('value') || '');
+                }} else {{
+                    el.value = matched.value || matched.getAttribute('value') || '';
+                }}
+                el.dispatchEvent(new Event('input', {{ bubbles: true, composed: true }}));
+                el.dispatchEvent(new Event('change', {{ bubbles: true, composed: true }}));
             }} else {{
                 matched.click();
             }}
@@ -403,7 +457,14 @@ pub async fn fill_choice_field(page: &Page, field_id: &str, field_type: &str, an
             if (!grp) return false;
             function norm(s) {{ return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }}
             const targets = {answers}.map(a => norm(String(a)));
-            const options = Array.from(grp.querySelectorAll('label, [role="radio"], [role="checkbox"], button, [class*="option"], [class*="radio"], [class*="checkbox"], li'));
+            let options = [];
+            if (grp.tagName === 'INPUT' && grp.name) {{
+                options = Array.from(document.querySelectorAll(`input[name="${{CSS.escape(grp.name)}}"]`))
+                    .map(inp => inp.closest('label') || document.querySelector(`label[for="${{CSS.escape(inp.id || '')}}"]`) || inp.parentElement || inp)
+                    .filter(Boolean);
+            }} else {{
+                options = Array.from(grp.querySelectorAll('label, [role="radio"], [role="checkbox"], button, [class*="option"], [class*="radio"], [class*="checkbox"], li'));
+            }}
             let found = false;
             for (const opt of options) {{
                 const raw = (opt.innerText || opt.textContent || opt.getAttribute('aria-label') || '').trim();
@@ -854,6 +915,23 @@ const SCAN_JS: &str = r#"
         return uniq.join(" ");
     }
 
+    // ¿El portal exige este campo? Sin esto el bot no puede distinguir un campo obligatorio
+    // de uno opcional, así que trataba igual a los dos: si no tenía respuesta lo saltaba y
+    // enviaba el formulario incompleto, y el ATS lo rechazaba sin que el bot supiera por qué.
+    //
+    // Se miran las tres formas en que los ATS lo marcan, porque casi ninguno usa las tres:
+    // la propiedad/atributo nativo, el ARIA, y el asterisco en la etiqueta (muy común en
+    // portales que validan solo del lado del servidor).
+    function isRequired(el, labelText) {
+        if (el && typeof el.getAttribute === 'function') {
+            if (el.required === true) return true;
+            if (el.getAttribute('required') !== null) return true;
+            if (el.getAttribute('aria-required') === 'true') return true;
+            if (el.querySelector && el.querySelector('[required], [aria-required="true"]')) return true;
+        }
+        return !!(labelText && labelText.includes('*'));
+    }
+
     function getValidationError(el) {
         // Semantic first (survives LinkedIn's hashed-class churn), legacy class as hint.
         if (el.getAttribute && el.getAttribute('aria-invalid') === 'true') {
@@ -1058,6 +1136,7 @@ const SCAN_JS: &str = r#"
             id, type: reportedType, label,
             value: inp.value || "",
             error: getValidationError(inp),
+            required: isRequired(inp, label),
             options: [],
             // Diagnostic only — fill_text_like_field probes behaviorally instead of
             // trusting these attributes, which LinkedIn no longer sets reliably.
@@ -1075,7 +1154,7 @@ const SCAN_JS: &str = r#"
         const options = Array.from(sel.querySelectorAll('option'))
             .map(o => o.innerText.trim())
             .filter(o => o && !o.toLowerCase().includes('selecciona') && !o.toLowerCase().includes('select'));
-        schema.push({ id, type: 'select', label, value: sel.value || "", error: getValidationError(sel), options, is_combobox: false });
+        schema.push({ id, type: 'select', label, value: sel.value || "", error: getValidationError(sel), required: isRequired(sel, label), options, is_combobox: false });
     });
 
     root.querySelectorAll("fieldset, div[role='group']").forEach(grp => {
@@ -1098,10 +1177,109 @@ const SCAN_JS: &str = r#"
         grp.setAttribute('data-tf-id', id);
         const options = labels.map(l => l.innerText.trim()).filter(Boolean);
         const rawHtml = (labelText === "Unknown Group Choice") ? grp.outerHTML.slice(0, 4000) : null;
-        schema.push({ id, type: inputType, label: labelText, value: "", error: getValidationError(grp), options, is_combobox: false, raw_html: rawHtml });
+        schema.push({ id, type: inputType, label: labelText, value: "", error: getValidationError(grp), required: isRequired(grp, labelText), options, is_combobox: false, raw_html: rawHtml });
     });
 
+    // Scan custom button choice groups (e.g. Recruiterflow, Workday, Greenhouse custom Yes/No toggle buttons).
+    // Restricted to a closed set of answer words (not "any short button text") and requiring a real
+    // question label nearby — otherwise this over-broad container selector (any *group*/*container*
+    // class, which is nearly every wrapper div in a React app) matches unrelated button pairs like
+    // cookie-banner Accept/Reject, modal Cancel/Confirm, or pagination Previous/Next, registers them
+    // as a fake required radio field, and risks the agent clicking one of those buttons for real.
+    const CHOICE_ANSWER_WORDS = new Set([
+        'yes', 'no', 'si', 'sí', 'true', 'false', 'agree', 'disagree', 'n/a', 'na',
+        'acepto', 'de acuerdo', 'verdadero', 'falso',
+    ]);
+    function choiceButtonText(el) {
+        return (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+    }
+    // El enunciado de la pregunta = el texto del contenedor una vez quitados los controles.
+    // Sirve igual si la pregunta está en <p>, <label>, <legend>, un <span> suelto o un nodo
+    // de texto pelado, sin depender de que alguien le haya puesto una clase reconocible.
+    function questionTextOf(el) {
+        if (!el) return "";
+        const clone = el.cloneNode(true);
+        clone.querySelectorAll("button, [role='button'], [role='radio'], [role='checkbox'], input, select, textarea").forEach(n => n.remove());
+        return cleanLabel(clone.innerText || clone.textContent || '');
+    }
+
+    // Se parte de LOS BOTONES y se sube al contenedor. La versión anterior partía de un
+    // selector de contenedor por nombre de clase, así que una pregunta envuelta en
+    // `<div class="question-row">` o `<div class="field">` era invisible para el escáner y
+    // el bot enviaba el formulario sin contestarla.
+    const answerButtons = Array.from(root.querySelectorAll("button, [role='button'], [role='radio']"))
+        .filter(b => isVisible(b) && !b.disabled && CHOICE_ANSWER_WORDS.has(choiceButtonText(b).toLowerCase()));
+
+    const claimedButtons = new Set();
+    for (const btn of answerButtons) {
+        if (claimedButtons.has(btn) || btn.closest('[data-tf-id]')) continue;
+
+        // Ancestro más pequeño que agrupe 2+ botones de respuesta: así dos preguntas
+        // consecutivas no se fusionan en un solo campo.
+        let container = null;
+        let members = null;
+        let anc = btn.parentElement;
+        for (let i = 0; i < 5 && anc; i++) {
+            const inside = answerButtons.filter(b => anc.contains(b));
+            if (inside.length >= 2) { container = anc; members = inside; break; }
+            anc = anc.parentElement;
+        }
+        if (!container || container.hasAttribute('data-tf-id') || container.closest('[data-tf-id]')) {
+            claimedButtons.add(btn);
+            continue;
+        }
+
+        let labelText = questionTextOf(container);
+        if (!labelText || labelText.length > 300) labelText = questionTextOf(container.parentElement);
+
+        // Sin enunciado no se registra el campo: es lo que evita inventar una pregunta falsa
+        // para un par de botones cualquiera (cookies Aceptar/Rechazar, modal Cancelar/Confirmar).
+        if (!labelText || labelText.length > 300) {
+            members.forEach(m => claimedButtons.add(m));
+            continue;
+        }
+
+        members.forEach(m => claimedButtons.add(m));
+        const id = 'tf_' + (counter++);
+        container.setAttribute('data-tf-id', id);
+        const options = members.map(choiceButtonText).filter(Boolean);
+        schema.push({ id, type: 'radio', label: labelText, value: "", error: getValidationError(container), required: isRequired(container, labelText), options, is_combobox: false, raw_html: null });
+    }
+
+    const ungrouped = {};
+    root.querySelectorAll("input[type='radio'], input[type='checkbox']").forEach(inp => {
+        if (inp.hasAttribute('data-tf-id') || inp.closest('[data-tf-id]')) return;
+        if (!isVisible(inp) && !isVisible(inp.closest('label') || inp.parentElement)) return;
+        const name = inp.getAttribute('name') || 'unnamed_' + inp.getAttribute('value');
+        if (!ungrouped[name]) ungrouped[name] = [];
+        ungrouped[name].push(inp);
+    });
+
+    for (const name in ungrouped) {
+        const groupInputs = ungrouped[name];
+        if (groupInputs.length === 0) continue;
+        const first = groupInputs[0];
+        const inputType = first.getAttribute('type') || 'radio';
+        const id = 'tf_' + (counter++);
+        // Mark the first one with the ID just so we have a target for DOM interactions
+        first.setAttribute('data-tf-id', id);
+        
+        let labelText = cleanLabel(getLabelForGroup(first.closest('div') || first.parentElement) || getLabel(first) || "Ungrouped Options");
+        const options = groupInputs.map(inp => {
+            const lbl = inp.closest('label');
+            if (lbl) return cleanLabel(lbl.innerText);
+            if (inp.id) {
+                const bound = document.querySelector(`label[for="${CSS.escape(inp.id)}"]`);
+                if (bound) return cleanLabel(bound.innerText);
+            }
+            return inp.getAttribute('value') || '';
+        }).filter(Boolean);
+        
+        schema.push({ id, type: inputType, label: labelText, value: "", error: getValidationError(first), required: isRequired(first, labelText), options, is_combobox: false, raw_html: null });
+    }
+
     // Catch-all: any other visible, labeled, interactive element inside the form root
+
     // that wasn't already tagged (contenteditable widgets, date/range/color inputs,
     // custom role=combobox elements that aren't plain <input>, etc.) — instead of being
     // invisible to the schema (and therefore silently skipped), report it as
@@ -1121,6 +1299,7 @@ const SCAN_JS: &str = r#"
             id, type: 'unknown', label,
             value: (el.value || el.innerText || '').trim(),
             error: getValidationError(el),
+            required: isRequired(el, label),
             options: [], is_combobox: false,
             raw_html: el.outerHTML.slice(0, 2000)
         });

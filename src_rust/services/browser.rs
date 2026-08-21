@@ -404,13 +404,13 @@ impl NativeBrowserScraper {
                         let conn = rusqlite::Connection::open(&self.db.db_path())?;
                         let insert_res = conn.execute(
                             "INSERT OR IGNORE INTO jobs (url, company, role, location, work_mode, source, requirements, language, match_score, status, raw_analysis, skills, ai_model) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                            rusqlite::params![url, company, role, loc, "Remote", "LinkedIn", full_desc, language, analysis.match_score, analysis.status, analysis.summary, skills_str, "gemini-1.5-pro"]
+                            rusqlite::params![url, company, role, loc, "Remote", "LinkedIn", full_desc, language, analysis.match_score, analysis.status, analysis.summary, skills_str, self.ai_client.gemini_model()]
                         );
 
                         if let Ok(affected) = insert_res {
                             if affected > 0 {
                                 total_saved += 1;
-                                println!("  💾 [Gemini 3.5 + SQLite] Guardada oferta #{}: {} en {} (Match: {}%)", total_saved, role, company, analysis.match_score);
+                                println!("  💾 [Gemini + SQLite] Guardada oferta #{}: {} en {} (Match: {}%)", total_saved, role, company, analysis.match_score);
                             }
                         }
 
@@ -422,7 +422,7 @@ impl NativeBrowserScraper {
                             "company": company,
                             "match_score": analysis.match_score,
                             "status": analysis.status,
-                            "ai_model": "gemini-1.5-pro",
+                            "ai_model": self.ai_client.gemini_model(),
                             "url": url
                         }).to_string();
                         let _ = self.db.insert_trace(&span_id, &trace_id, "evaluate_job_gemini", &analysis.status, &trace_attrs);

@@ -339,6 +339,11 @@ pub async fn run_agent(
     let mut history: Vec<String> = Vec::new();
     let mut last_fingerprint: Option<String> = None;
     let mut unchanged_rounds = 0u32;
+    // Rescate visual: se intenta UNA sola vez por oferta y solo cuando el camino tradicional
+    // (DOM determinista + agente de solo-texto) ya se agotó. La captura es cara y lenta, así
+    // que no se usa como atajo, sino como alternativa a saltarse la oferta entera.
+    let mut vision_attempted = false;
+    let mut pending_decision: Option<serde_json::Value> = None;
 
     for step in 1..=max_steps {
         let snap = snapshot(page).await?;
@@ -356,16 +361,31 @@ pub async fn run_agent(
             if unchanged_rounds >= 3 {
                 let msg = "La página dejó de cambiar tras 3 acciones seguidas del agente.".to_string();
                 println!("      🛑 [Agente] {}", msg);
-                return Ok(AgentOutcome::NeedsHuman(msg));
+                match try_vision_rescue(page, ai, &goal, profile_yaml, &snap, &history, dry_run, &msg, &mut vision_attempted).await {
+                    Some(decision) => {
+                        pending_decision = Some(decision);
+                        unchanged_rounds = 0;
+                        history.push("(la página no avanzaba; se aplicó el análisis de la captura)".to_string());
+                    }
+                    None => return Ok(AgentOutcome::NeedsHuman(msg)),
+                }
             }
         } else {
             unchanged_rounds = 0;
         }
         last_fingerprint = Some(fp);
 
-        let Some(decision) = ai.decide_next_action(&goal, profile_yaml, &snap, &history, dry_run).await else {
-            history.push("(el modelo no devolvió una acción válida)".to_string());
-            continue;
+        // Una decisión pendiente viene del rescate visual: se ejecuta en vez de volver a
+        // preguntarle al modelo de solo-texto, que ya demostró estar atascado en esta página.
+        let decision = match pending_decision.take() {
+            Some(d) => d,
+            None => {
+                let Some(d) = ai.decide_next_action(&goal, profile_yaml, &snap, &history, dry_run).await else {
+                    history.push("(el modelo no devolvió una acción válida)".to_string());
+                    continue;
+                };
+                d
+            }
         };
 
         let Some(action) = AgentAction::from_json(&decision) else {
@@ -391,7 +411,17 @@ pub async fn run_agent(
                 continue;
             }
             AgentAction::NeedsHuman { reason } => {
-                return Ok(AgentOutcome::NeedsHuman(reason.clone()));
+                // El modelo se rinde leyendo solo el DOM. Antes de saltar a la siguiente
+                // oferta, se le muestra la página como la ve un humano.
+                match try_vision_rescue(page, ai, &goal, profile_yaml, &snap, &history, dry_run, reason, &mut vision_attempted).await {
+                    Some(decision) => {
+                        pending_decision = Some(decision);
+                        unchanged_rounds = 0;
+                        history.push(format!("('needs_human: {}' reconsiderado tras mirar la captura)", reason));
+                        continue;
+                    }
+                    None => return Ok(AgentOutcome::NeedsHuman(reason.clone())),
+                }
             }
             AgentAction::UploadResume => {
                 let uploaded = resume_manager.smart_upload_resume(page, &ctx.target_resume).await.ok().flatten();
@@ -429,6 +459,73 @@ pub async fn run_agent(
     }
 
     Ok(AgentOutcome::Exhausted)
+}
+
+/// Captura la pantalla y devuelve el PNG en base64, guardando además una copia en
+/// `debug/screenshots/` para poder auditar después qué vio el modelo.
+async fn capture_screenshot_base64(page: &Page) -> Option<String> {
+    use base64::Engine;
+
+    let params = chromiumoxide::page::ScreenshotParams::builder()
+        .format(chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png)
+        .build();
+
+    let bytes = match page.screenshot(params).await {
+        Ok(b) => b,
+        Err(e) => {
+            println!("      ⚠️ [Agente] No se pudo capturar la pantalla: {}", e);
+            return None;
+        }
+    };
+
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let path = format!("debug/screenshots/agent_stuck_{}.png", timestamp);
+    if std::fs::create_dir_all("debug/screenshots").is_ok() {
+        if std::fs::write(&path, &bytes).is_ok() {
+            println!("      📸 [Agente] Captura guardada en {}", path);
+        }
+    }
+
+    Some(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+/// Último recurso antes de dar la oferta por perdida: foto de la página + análisis visual.
+///
+/// Solo se intenta UNA vez por oferta (`attempted`), y siempre después de que el DOM y el
+/// agente de solo-texto ya fallaron — que es el orden pedido: primero lo tradicional, que es
+/// barato y determinista; la imagen solo si eso no resolvió.
+#[allow(clippy::too_many_arguments)]
+async fn try_vision_rescue(
+    page: &Page,
+    ai: &crate::services::AiClient,
+    goal: &str,
+    profile_yaml: &str,
+    snap: &PageSnapshot,
+    history: &[String],
+    dry_run: bool,
+    stuck_reason: &str,
+    attempted: &mut bool,
+) -> Option<serde_json::Value> {
+    if *attempted {
+        return None;
+    }
+    *attempted = true;
+
+    println!("      📸 [Agente] Atascado ({}). Tomando captura para analizarla antes de rendirse...", stuck_reason);
+    let shot = capture_screenshot_base64(page).await?;
+
+    let decision = ai
+        .decide_next_action_with_vision(goal, profile_yaml, snap, history, dry_run, stuck_reason, &shot)
+        .await?;
+
+    // Si tras ver la imagen insiste en rendirse, se respeta: ya no queda camino.
+    if decision.get("action").and_then(|a| a.as_str()) == Some("needs_human") {
+        println!("      🛑 [Agente] El análisis visual tampoco encontró salida.");
+        return None;
+    }
+
+    println!("      ✅ [Agente] El análisis visual propuso una acción nueva.");
+    Some(decision)
 }
 
 const SNAPSHOT_JS: &str = r#"(() => {
@@ -494,7 +591,7 @@ const SNAPSHOT_JS: &str = r#"(() => {
     const SKIP = ['hidden', 'submit', 'reset', 'image'];
 
     for (const el of document.querySelectorAll('input, textarea, select')) {
-        if (!isVisible(el)) continue;
+        if (!isVisible(el) && !isVisible(el.closest('label') || el.parentElement)) continue;
         const raw = (el.tagName === 'INPUT') ? String(el.type || 'text').toLowerCase()
                   : (el.tagName === 'SELECT') ? 'select' : 'text';
         if (SKIP.includes(raw)) continue;
@@ -516,10 +613,24 @@ const SNAPSHOT_JS: &str = r#"(() => {
         });
     }
 
-    for (const el of document.querySelectorAll("button, a[href], [role='button'], input[type='submit']")) {
+    for (const el of document.querySelectorAll("button, a[href], [role='button'], input[type='submit'], [role='radio'], [role='checkbox'], [role='switch'], label")) {
         if (!isVisible(el) || el.disabled) continue;
-        const label = (norm(el.innerText) || norm(el.getAttribute('aria-label')) || norm(el.value)).slice(0, 80);
+        let label = (norm(el.innerText) || norm(el.getAttribute('aria-label')) || norm(el.value)).slice(0, 80);
         if (!label) continue;
+
+        const lowerLabel = label.toLowerCase();
+        if (lowerLabel === 'yes' || lowerLabel === 'no' || lowerLabel === 'si' || lowerLabel === 'sí') {
+            let p = el.parentElement;
+            for (let i = 0; i < 4 && p; i++) {
+                const q = p.querySelector('p, label, legend, h3, h4, [class*="label"]');
+                if (q && isVisible(q) && norm(q.innerText) && norm(q.innerText).toLowerCase() !== lowerLabel) {
+                    label = norm(q.innerText).slice(0, 60) + ' -> ' + label;
+                    break;
+                }
+                p = p.parentElement;
+            }
+        }
+
         actions.push({
             id: tag(el),
             kind: el.tagName.toLowerCase() === 'a' ? 'link' : 'button',
