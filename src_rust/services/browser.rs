@@ -76,10 +76,10 @@ pub async fn inject_stealth_scripts(page: &chromiumoxide::Page) -> Result<()> {
 /// Launches Chrome against the persisted LinkedIn profile for APPLYING (email.coronado@gmail.com / user_data_auth).
 pub async fn launch_apply_browser() -> Result<(Browser, JoinHandle<()>)> {
     let current_dir = std::env::current_dir()?;
-    let user_data_path = if current_dir.join("user_data_safe").exists() {
-        current_dir.join("user_data_safe")
-    } else if current_dir.join("user_data_auth").exists() {
+    let user_data_path = if current_dir.join("user_data_auth").exists() {
         current_dir.join("user_data_auth")
+    } else if current_dir.join("user_data_safe").exists() {
+        current_dir.join("user_data_safe")
     } else {
         current_dir.join("user_data")
     };
