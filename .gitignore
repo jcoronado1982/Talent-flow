@@ -27,10 +27,25 @@ resume/
 resumes/
 *.db
 
-# Configuration & Secrets
-config/credentials.yaml
+# Configuration, API Keys & Secrets (Strictly Local Only)
 .env
+.env*
+*.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+*.key
+*.pem
+*.secret
+*.secrets
+*api_key*
+*token*
+config/credentials.yaml
+config/credentials*.yaml
+config/credentials*.json
 config/profile_config.json
+config/profile_config.*.json
 
 # Browser Profiles, Sessions, and User Data (Strictly Local Only)
 user_data/
