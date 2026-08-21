@@ -193,7 +193,7 @@ impl AiClient {
         let gemini_model = std::env::var("GEMINI_MODEL")
             .ok()
             .or_else(|| ai_config.and_then(|c| c.cloud_model.clone()))
-            .unwrap_or_else(|| "gemini-3-flash-preview".to_string());
+            .unwrap_or_else(|| "gemini-3.7-flash".to_string());
 
         let openai_key = std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty());
         let openai_model = std::env::var("OPENAI_MODEL")

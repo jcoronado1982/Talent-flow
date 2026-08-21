@@ -54,9 +54,8 @@ pub async fn run_apply_bot(
 
     let (browser, handle) = crate::services::browser::launch_apply_browser().await?;
     let page = browser.new_page("about:blank").await?;
-    // Modelo que se cambia a mano (intencional — no convertir en config)
-    let ai_client = AiClient::with_profile(Some(&profile)).with_custom_model("claude-sonnet-5");
-    println!("🤖 [Apply Bot] Usando modelo especializado '{}' para postulaciones (LinkedIn & Externas)...", ai_client.gemini_model());
+    let ai_client = AiClient::with_profile(Some(&profile));
+    println!("🤖 [Apply Bot] Usando modelo de IA configurado '{}' para postulaciones...", ai_client.gemini_model());
     let resume_manager = ResumeManager::new(base_dir.clone(), profile.clone());
     let profile_skills = profile.skills.clone();
 

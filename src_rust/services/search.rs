@@ -124,7 +124,7 @@ pub async fn run_job_search(
         let encoded_loc = country.replace(" ", "%20");
         
         let search_url = format!(
-            "https://www.linkedin.com/jobs/search/?keywords={}&location={}&f_TPR=r86400",
+            "https://www.linkedin.com/jobs/search/?keywords={}&location={}&f_TPR=r86400&f_AL=true",
             encoded_role, encoded_loc
         );
 
