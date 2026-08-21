@@ -59,7 +59,7 @@ pub async fn run_external_apply_bot(
     let page = browser.new_page("about:blank").await?;
     let _ = crate::services::browser::inject_stealth_scripts(&page).await;
 
-    let ai_client = AiClient::with_profile(Some(&profile)).with_custom_model("claude-sonnet-5");
+    let ai_client = AiClient::with_profile(Some(&profile)).with_custom_model("gemini-3.7-flash");
     println!("🤖 [External Apply Bot] Usando modelo especializado '{}' para ofertas externas...", ai_client.gemini_model());
     let resume_manager = ResumeManager::new(base_dir.clone(), profile.clone());
     let profile_skills = profile.skills.clone();
