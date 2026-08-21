@@ -16,6 +16,15 @@ job_report.csv
 user_data/
 user_data_auth/
 cv/
+cv/**
+*.pdf
+*.PDF
+*.doc
+*.docx
+*.DOC
+*.DOCX
+resume/
+resumes/
 *.db
 
 # Configuration & Secrets
